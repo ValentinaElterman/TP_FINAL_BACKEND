@@ -5,7 +5,7 @@
 -- Dumped from database version 16.2
 -- Dumped by pg_dump version 16.2
 
--- Started on 2026-11-02 11:35:09
+-- Started on 2026-11-02 14:06:46
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -19,7 +19,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- TOC entry 4914 (class 1262 OID 16398)
+-- TOC entry 4942 (class 1262 OID 16398)
 -- Name: VASAS; Type: DATABASE; Schema: -; Owner: postgres
 --
 
@@ -46,7 +46,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- TOC entry 238 (class 1259 OID 16587)
+-- TOC entry 215 (class 1259 OID 16399)
 -- Name: actividad; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -54,17 +54,17 @@ CREATE TABLE public.actividad (
     id integer NOT NULL,
     usuario_id integer NOT NULL,
     tipo character varying,
-    cancion_id integer NOT NULL,
-    coleccion_id integer NOT NULL,
+    cancion_id integer,
+    coleccion_id integer,
     detalles jsonb,
-    fecha date
+    fecha timestamp without time zone
 );
 
 
 ALTER TABLE public.actividad OWNER TO postgres;
 
 --
--- TOC entry 237 (class 1259 OID 16586)
+-- TOC entry 216 (class 1259 OID 16404)
 -- Name: actividad_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -79,7 +79,7 @@ ALTER TABLE public.actividad ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- TOC entry 215 (class 1259 OID 16399)
+-- TOC entry 217 (class 1259 OID 16405)
 -- Name: albumes; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -87,14 +87,15 @@ CREATE TABLE public.albumes (
     id integer NOT NULL,
     titulo character varying NOT NULL,
     foto character varying,
-    fecha_lanzamiento date
+    fecha_lanzamiento date,
+    external_id integer NOT NULL
 );
 
 
 ALTER TABLE public.albumes OWNER TO postgres;
 
 --
--- TOC entry 216 (class 1259 OID 16404)
+-- TOC entry 218 (class 1259 OID 16410)
 -- Name: albumes_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -109,21 +110,22 @@ ALTER TABLE public.albumes ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- TOC entry 217 (class 1259 OID 16405)
+-- TOC entry 219 (class 1259 OID 16411)
 -- Name: artistas; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public.artistas (
     id integer NOT NULL,
     nombre character varying NOT NULL,
-    foto character varying
+    foto character varying,
+    external_id integer NOT NULL
 );
 
 
 ALTER TABLE public.artistas OWNER TO postgres;
 
 --
--- TOC entry 218 (class 1259 OID 16410)
+-- TOC entry 220 (class 1259 OID 16416)
 -- Name: artistas_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -138,39 +140,55 @@ ALTER TABLE public.artistas ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- TOC entry 219 (class 1259 OID 16411)
+-- TOC entry 221 (class 1259 OID 16417)
 -- Name: biblioteca; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public.biblioteca (
     id integer NOT NULL,
-    usuario_id integer NOT NULL,
-    cancion_id integer NOT NULL,
     estado character varying NOT NULL,
     es_favorita boolean NOT NULL,
     fecha_agregado date,
-    fecha_actualizacion date
+    fecha_actualizacion date,
+    usuario_id integer NOT NULL,
+    cancion_id integer NOT NULL,
+    CONSTRAINT check_biblioteca_estado CHECK (((estado)::text = ANY ((ARRAY['quiero_escuchar'::character varying, 'escuchando'::character varying, 'escuchado'::character varying])::text[])))
 );
 
 
 ALTER TABLE public.biblioteca OWNER TO postgres;
 
 --
--- TOC entry 220 (class 1259 OID 16416)
+-- TOC entry 222 (class 1259 OID 16422)
 -- Name: cancion_artistas; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public.cancion_artistas (
-    id integer NOT NULL,
     cancion_id integer NOT NULL,
-    artista_id integer NOT NULL
+    artista_id integer NOT NULL,
+    id integer NOT NULL
 );
 
 
 ALTER TABLE public.cancion_artistas OWNER TO postgres;
 
 --
--- TOC entry 221 (class 1259 OID 16419)
+-- TOC entry 239 (class 1259 OID 16618)
+-- Name: cancion_artistas_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+ALTER TABLE public.cancion_artistas ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.cancion_artistas_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- TOC entry 223 (class 1259 OID 16425)
 -- Name: cancion_generos; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -183,7 +201,7 @@ CREATE TABLE public.cancion_generos (
 ALTER TABLE public.cancion_generos OWNER TO postgres;
 
 --
--- TOC entry 222 (class 1259 OID 16422)
+-- TOC entry 224 (class 1259 OID 16428)
 -- Name: canciones; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -193,14 +211,15 @@ CREATE TABLE public.canciones (
     album_id integer,
     duracion integer NOT NULL,
     foto character varying,
-    fecha_lanzamiento date
+    fecha_lanzamiento date,
+    external_id integer NOT NULL
 );
 
 
 ALTER TABLE public.canciones OWNER TO postgres;
 
 --
--- TOC entry 223 (class 1259 OID 16427)
+-- TOC entry 225 (class 1259 OID 16433)
 -- Name: canciones_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -215,7 +234,7 @@ ALTER TABLE public.canciones ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- TOC entry 233 (class 1259 OID 16533)
+-- TOC entry 226 (class 1259 OID 16434)
 -- Name: colecciones; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -232,7 +251,7 @@ CREATE TABLE public.colecciones (
 ALTER TABLE public.colecciones OWNER TO postgres;
 
 --
--- TOC entry 234 (class 1259 OID 16545)
+-- TOC entry 227 (class 1259 OID 16439)
 -- Name: colecciones_canciones; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -247,7 +266,7 @@ CREATE TABLE public.colecciones_canciones (
 ALTER TABLE public.colecciones_canciones OWNER TO postgres;
 
 --
--- TOC entry 232 (class 1259 OID 16532)
+-- TOC entry 228 (class 1259 OID 16442)
 -- Name: colecciones_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -262,7 +281,7 @@ ALTER TABLE public.colecciones ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY 
 
 
 --
--- TOC entry 224 (class 1259 OID 16428)
+-- TOC entry 229 (class 1259 OID 16443)
 -- Name: generos; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -275,7 +294,7 @@ CREATE TABLE public.generos (
 ALTER TABLE public.generos OWNER TO postgres;
 
 --
--- TOC entry 225 (class 1259 OID 16433)
+-- TOC entry 230 (class 1259 OID 16448)
 -- Name: generos_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -290,7 +309,7 @@ ALTER TABLE public.generos ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- TOC entry 226 (class 1259 OID 16434)
+-- TOC entry 231 (class 1259 OID 16449)
 -- Name: perfiles; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -306,24 +325,25 @@ CREATE TABLE public.perfiles (
 ALTER TABLE public.perfiles OWNER TO postgres;
 
 --
--- TOC entry 227 (class 1259 OID 16439)
+-- TOC entry 232 (class 1259 OID 16454)
 -- Name: puntuaciones; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public.puntuaciones (
     id integer NOT NULL,
-    usuario_id integer NOT NULL,
-    cancion_id integer NOT NULL,
     valor integer NOT NULL,
     fecha_creacion date,
-    fecha_actualizacion date
+    fecha_actualizacion date,
+    usuario_id integer NOT NULL,
+    cancion_id integer NOT NULL,
+    CONSTRAINT chk_puntuaciones_valor CHECK (((valor >= 1) AND (valor <= 5)))
 );
 
 
 ALTER TABLE public.puntuaciones OWNER TO postgres;
 
 --
--- TOC entry 236 (class 1259 OID 16569)
+-- TOC entry 233 (class 1259 OID 16457)
 -- Name: reproducciones; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -331,7 +351,7 @@ CREATE TABLE public.reproducciones (
     id integer NOT NULL,
     usuario_id integer NOT NULL,
     cancion_id integer NOT NULL,
-    fecha_inicio date,
+    fecha_inicio timestamp without time zone,
     segundos_escuchados integer NOT NULL,
     completada boolean NOT NULL,
     fuente character varying
@@ -341,7 +361,7 @@ CREATE TABLE public.reproducciones (
 ALTER TABLE public.reproducciones OWNER TO postgres;
 
 --
--- TOC entry 235 (class 1259 OID 16568)
+-- TOC entry 234 (class 1259 OID 16462)
 -- Name: reproducciones_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -356,24 +376,24 @@ ALTER TABLE public.reproducciones ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTI
 
 
 --
--- TOC entry 231 (class 1259 OID 16515)
+-- TOC entry 235 (class 1259 OID 16463)
 -- Name: reseñas; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public."reseñas" (
     id integer NOT NULL,
-    usuario_id integer NOT NULL,
-    cancion_id integer NOT NULL,
     texto character varying NOT NULL,
     fecha_creacion date,
-    fecha_actualizacion date
+    fecha_actualizacion date,
+    usuario_id integer NOT NULL,
+    cancion_id integer NOT NULL
 );
 
 
 ALTER TABLE public."reseñas" OWNER TO postgres;
 
 --
--- TOC entry 230 (class 1259 OID 16514)
+-- TOC entry 236 (class 1259 OID 16468)
 -- Name: reseñas_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -388,23 +408,23 @@ ALTER TABLE public."reseñas" ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- TOC entry 228 (class 1259 OID 16442)
+-- TOC entry 237 (class 1259 OID 16469)
 -- Name: usuarios; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public.usuarios (
     id integer NOT NULL,
-    username character varying NOT NULL,
-    email character varying NOT NULL,
     password character varying NOT NULL,
-    activo boolean NOT NULL
+    activo boolean NOT NULL,
+    username character varying NOT NULL,
+    email character varying NOT NULL
 );
 
 
 ALTER TABLE public.usuarios OWNER TO postgres;
 
 --
--- TOC entry 229 (class 1259 OID 16447)
+-- TOC entry 238 (class 1259 OID 16474)
 -- Name: usuarios_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -419,128 +439,128 @@ ALTER TABLE public.usuarios ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 
 
 --
--- TOC entry 4908 (class 0 OID 16587)
--- Dependencies: 238
+-- TOC entry 4912 (class 0 OID 16399)
+-- Dependencies: 215
 -- Data for Name: actividad; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4885 (class 0 OID 16399)
--- Dependencies: 215
+-- TOC entry 4914 (class 0 OID 16405)
+-- Dependencies: 217
 -- Data for Name: albumes; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4887 (class 0 OID 16405)
--- Dependencies: 217
+-- TOC entry 4916 (class 0 OID 16411)
+-- Dependencies: 219
 -- Data for Name: artistas; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4889 (class 0 OID 16411)
--- Dependencies: 219
+-- TOC entry 4918 (class 0 OID 16417)
+-- Dependencies: 221
 -- Data for Name: biblioteca; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4890 (class 0 OID 16416)
--- Dependencies: 220
+-- TOC entry 4919 (class 0 OID 16422)
+-- Dependencies: 222
 -- Data for Name: cancion_artistas; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4891 (class 0 OID 16419)
--- Dependencies: 221
+-- TOC entry 4920 (class 0 OID 16425)
+-- Dependencies: 223
 -- Data for Name: cancion_generos; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4892 (class 0 OID 16422)
--- Dependencies: 222
+-- TOC entry 4921 (class 0 OID 16428)
+-- Dependencies: 224
 -- Data for Name: canciones; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4903 (class 0 OID 16533)
--- Dependencies: 233
+-- TOC entry 4923 (class 0 OID 16434)
+-- Dependencies: 226
 -- Data for Name: colecciones; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4904 (class 0 OID 16545)
--- Dependencies: 234
+-- TOC entry 4924 (class 0 OID 16439)
+-- Dependencies: 227
 -- Data for Name: colecciones_canciones; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4894 (class 0 OID 16428)
--- Dependencies: 224
+-- TOC entry 4926 (class 0 OID 16443)
+-- Dependencies: 229
 -- Data for Name: generos; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4896 (class 0 OID 16434)
--- Dependencies: 226
+-- TOC entry 4928 (class 0 OID 16449)
+-- Dependencies: 231
 -- Data for Name: perfiles; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4897 (class 0 OID 16439)
--- Dependencies: 227
+-- TOC entry 4929 (class 0 OID 16454)
+-- Dependencies: 232
 -- Data for Name: puntuaciones; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4906 (class 0 OID 16569)
--- Dependencies: 236
+-- TOC entry 4930 (class 0 OID 16457)
+-- Dependencies: 233
 -- Data for Name: reproducciones; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4901 (class 0 OID 16515)
--- Dependencies: 231
+-- TOC entry 4932 (class 0 OID 16463)
+-- Dependencies: 235
 -- Data for Name: reseñas; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4898 (class 0 OID 16442)
--- Dependencies: 228
+-- TOC entry 4934 (class 0 OID 16469)
+-- Dependencies: 237
 -- Data for Name: usuarios; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
 
 
 --
--- TOC entry 4915 (class 0 OID 0)
--- Dependencies: 237
+-- TOC entry 4943 (class 0 OID 0)
+-- Dependencies: 216
 -- Name: actividad_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -548,8 +568,8 @@ SELECT pg_catalog.setval('public.actividad_id_seq', 1, false);
 
 
 --
--- TOC entry 4916 (class 0 OID 0)
--- Dependencies: 216
+-- TOC entry 4944 (class 0 OID 0)
+-- Dependencies: 218
 -- Name: albumes_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -557,8 +577,8 @@ SELECT pg_catalog.setval('public.albumes_id_seq', 1, false);
 
 
 --
--- TOC entry 4917 (class 0 OID 0)
--- Dependencies: 218
+-- TOC entry 4945 (class 0 OID 0)
+-- Dependencies: 220
 -- Name: artistas_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -566,8 +586,17 @@ SELECT pg_catalog.setval('public.artistas_id_seq', 1, false);
 
 
 --
--- TOC entry 4918 (class 0 OID 0)
--- Dependencies: 223
+-- TOC entry 4946 (class 0 OID 0)
+-- Dependencies: 239
+-- Name: cancion_artistas_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.cancion_artistas_id_seq', 1, false);
+
+
+--
+-- TOC entry 4947 (class 0 OID 0)
+-- Dependencies: 225
 -- Name: canciones_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -575,8 +604,8 @@ SELECT pg_catalog.setval('public.canciones_id_seq', 1, false);
 
 
 --
--- TOC entry 4919 (class 0 OID 0)
--- Dependencies: 232
+-- TOC entry 4948 (class 0 OID 0)
+-- Dependencies: 228
 -- Name: colecciones_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -584,8 +613,8 @@ SELECT pg_catalog.setval('public.colecciones_id_seq', 1, false);
 
 
 --
--- TOC entry 4920 (class 0 OID 0)
--- Dependencies: 225
+-- TOC entry 4949 (class 0 OID 0)
+-- Dependencies: 230
 -- Name: generos_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -593,8 +622,8 @@ SELECT pg_catalog.setval('public.generos_id_seq', 1, false);
 
 
 --
--- TOC entry 4921 (class 0 OID 0)
--- Dependencies: 235
+-- TOC entry 4950 (class 0 OID 0)
+-- Dependencies: 234
 -- Name: reproducciones_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -602,8 +631,8 @@ SELECT pg_catalog.setval('public.reproducciones_id_seq', 1, false);
 
 
 --
--- TOC entry 4922 (class 0 OID 0)
--- Dependencies: 230
+-- TOC entry 4951 (class 0 OID 0)
+-- Dependencies: 236
 -- Name: reseñas_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -611,8 +640,8 @@ SELECT pg_catalog.setval('public."reseñas_id_seq"', 1, false);
 
 
 --
--- TOC entry 4923 (class 0 OID 0)
--- Dependencies: 229
+-- TOC entry 4952 (class 0 OID 0)
+-- Dependencies: 238
 -- Name: usuarios_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -620,7 +649,7 @@ SELECT pg_catalog.setval('public.usuarios_id_seq', 1, false);
 
 
 --
--- TOC entry 4721 (class 2606 OID 16593)
+-- TOC entry 4702 (class 2606 OID 16476)
 -- Name: actividad actividad_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -629,7 +658,7 @@ ALTER TABLE ONLY public.actividad
 
 
 --
--- TOC entry 4699 (class 2606 OID 16449)
+-- TOC entry 4704 (class 2606 OID 16478)
 -- Name: albumes albumes_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -638,7 +667,16 @@ ALTER TABLE ONLY public.albumes
 
 
 --
--- TOC entry 4701 (class 2606 OID 16451)
+-- TOC entry 4706 (class 2606 OID 16605)
+-- Name: albumes albumes_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.albumes
+    ADD CONSTRAINT albumes_unique UNIQUE (external_id);
+
+
+--
+-- TOC entry 4708 (class 2606 OID 16480)
 -- Name: artistas artistas_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -647,7 +685,16 @@ ALTER TABLE ONLY public.artistas
 
 
 --
--- TOC entry 4703 (class 2606 OID 16453)
+-- TOC entry 4710 (class 2606 OID 16603)
+-- Name: artistas artistas_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.artistas
+    ADD CONSTRAINT artistas_unique UNIQUE (external_id);
+
+
+--
+-- TOC entry 4712 (class 2606 OID 16482)
 -- Name: biblioteca biblioteca_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -656,7 +703,34 @@ ALTER TABLE ONLY public.biblioteca
 
 
 --
--- TOC entry 4705 (class 2606 OID 16455)
+-- TOC entry 4714 (class 2606 OID 16637)
+-- Name: biblioteca biblioteca_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.biblioteca
+    ADD CONSTRAINT biblioteca_unique UNIQUE (usuario_id);
+
+
+--
+-- TOC entry 4716 (class 2606 OID 16644)
+-- Name: biblioteca biblioteca_unique_1; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.biblioteca
+    ADD CONSTRAINT biblioteca_unique_1 UNIQUE (cancion_id);
+
+
+--
+-- TOC entry 4718 (class 2606 OID 16623)
+-- Name: cancion_artistas cancion_artistas_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.cancion_artistas
+    ADD CONSTRAINT cancion_artistas_pk PRIMARY KEY (id);
+
+
+--
+-- TOC entry 4720 (class 2606 OID 16484)
 -- Name: canciones canciones_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -665,7 +739,16 @@ ALTER TABLE ONLY public.canciones
 
 
 --
--- TOC entry 4717 (class 2606 OID 16539)
+-- TOC entry 4722 (class 2606 OID 16601)
+-- Name: canciones canciones_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.canciones
+    ADD CONSTRAINT canciones_unique UNIQUE (external_id);
+
+
+--
+-- TOC entry 4724 (class 2606 OID 16486)
 -- Name: colecciones colecciones_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -674,7 +757,7 @@ ALTER TABLE ONLY public.colecciones
 
 
 --
--- TOC entry 4707 (class 2606 OID 16457)
+-- TOC entry 4726 (class 2606 OID 16488)
 -- Name: generos generos_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -683,7 +766,7 @@ ALTER TABLE ONLY public.generos
 
 
 --
--- TOC entry 4709 (class 2606 OID 16459)
+-- TOC entry 4728 (class 2606 OID 16490)
 -- Name: perfiles perfiles_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -692,7 +775,7 @@ ALTER TABLE ONLY public.perfiles
 
 
 --
--- TOC entry 4711 (class 2606 OID 16461)
+-- TOC entry 4730 (class 2606 OID 16492)
 -- Name: puntuaciones puntuaciones_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -701,7 +784,25 @@ ALTER TABLE ONLY public.puntuaciones
 
 
 --
--- TOC entry 4719 (class 2606 OID 16575)
+-- TOC entry 4732 (class 2606 OID 16651)
+-- Name: puntuaciones puntuaciones_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.puntuaciones
+    ADD CONSTRAINT puntuaciones_unique UNIQUE (usuario_id);
+
+
+--
+-- TOC entry 4734 (class 2606 OID 16653)
+-- Name: puntuaciones puntuaciones_unique_1; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.puntuaciones
+    ADD CONSTRAINT puntuaciones_unique_1 UNIQUE (cancion_id);
+
+
+--
+-- TOC entry 4736 (class 2606 OID 16494)
 -- Name: reproducciones reproducciones_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -710,7 +811,7 @@ ALTER TABLE ONLY public.reproducciones
 
 
 --
--- TOC entry 4715 (class 2606 OID 16521)
+-- TOC entry 4738 (class 2606 OID 16496)
 -- Name: reseñas reseñas_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -719,7 +820,25 @@ ALTER TABLE ONLY public."reseñas"
 
 
 --
--- TOC entry 4713 (class 2606 OID 16463)
+-- TOC entry 4740 (class 2606 OID 16665)
+-- Name: reseñas reseñas_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public."reseñas"
+    ADD CONSTRAINT "reseñas_unique" UNIQUE (usuario_id);
+
+
+--
+-- TOC entry 4742 (class 2606 OID 16667)
+-- Name: reseñas reseñas_unique_1; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public."reseñas"
+    ADD CONSTRAINT "reseñas_unique_1" UNIQUE (cancion_id);
+
+
+--
+-- TOC entry 4744 (class 2606 OID 16498)
 -- Name: usuarios usuarios_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -728,7 +847,25 @@ ALTER TABLE ONLY public.usuarios
 
 
 --
--- TOC entry 4739 (class 2606 OID 16690)
+-- TOC entry 4746 (class 2606 OID 16679)
+-- Name: usuarios usuarios_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.usuarios
+    ADD CONSTRAINT usuarios_unique UNIQUE (username);
+
+
+--
+-- TOC entry 4748 (class 2606 OID 16681)
+-- Name: usuarios usuarios_unique_1; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.usuarios
+    ADD CONSTRAINT usuarios_unique_1 UNIQUE (email);
+
+
+--
+-- TOC entry 4749 (class 2606 OID 16499)
 -- Name: actividad actividad_canciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -737,7 +874,7 @@ ALTER TABLE ONLY public.actividad
 
 
 --
--- TOC entry 4740 (class 2606 OID 16695)
+-- TOC entry 4750 (class 2606 OID 16504)
 -- Name: actividad actividad_colecciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -746,7 +883,7 @@ ALTER TABLE ONLY public.actividad
 
 
 --
--- TOC entry 4741 (class 2606 OID 16685)
+-- TOC entry 4751 (class 2606 OID 16509)
 -- Name: actividad actividad_usuarios_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -755,25 +892,25 @@ ALTER TABLE ONLY public.actividad
 
 
 --
--- TOC entry 4722 (class 2606 OID 16464)
+-- TOC entry 4752 (class 2606 OID 16645)
 -- Name: biblioteca biblioteca_canciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.biblioteca
-    ADD CONSTRAINT biblioteca_canciones_fk FOREIGN KEY (cancion_id) REFERENCES public.canciones(id);
+    ADD CONSTRAINT biblioteca_canciones_fk FOREIGN KEY (cancion_id) REFERENCES public.canciones(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --
--- TOC entry 4723 (class 2606 OID 16469)
+-- TOC entry 4753 (class 2606 OID 16638)
 -- Name: biblioteca biblioteca_usuarios_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.biblioteca
-    ADD CONSTRAINT biblioteca_usuarios_fk FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id);
+    ADD CONSTRAINT biblioteca_usuarios_fk FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
 --
--- TOC entry 4724 (class 2606 OID 16610)
+-- TOC entry 4754 (class 2606 OID 16524)
 -- Name: cancion_artistas cancion_artistas_artistas_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -782,7 +919,7 @@ ALTER TABLE ONLY public.cancion_artistas
 
 
 --
--- TOC entry 4725 (class 2606 OID 16615)
+-- TOC entry 4755 (class 2606 OID 16529)
 -- Name: cancion_artistas cancion_artistas_canciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -791,7 +928,7 @@ ALTER TABLE ONLY public.cancion_artistas
 
 
 --
--- TOC entry 4726 (class 2606 OID 16620)
+-- TOC entry 4756 (class 2606 OID 16534)
 -- Name: cancion_generos cancion_generos_canciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -800,7 +937,7 @@ ALTER TABLE ONLY public.cancion_generos
 
 
 --
--- TOC entry 4727 (class 2606 OID 16625)
+-- TOC entry 4757 (class 2606 OID 16539)
 -- Name: cancion_generos cancion_generos_generos_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -809,7 +946,7 @@ ALTER TABLE ONLY public.cancion_generos
 
 
 --
--- TOC entry 4728 (class 2606 OID 16630)
+-- TOC entry 4758 (class 2606 OID 16544)
 -- Name: canciones canciones_albumes_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -818,7 +955,7 @@ ALTER TABLE ONLY public.canciones
 
 
 --
--- TOC entry 4735 (class 2606 OID 16670)
+-- TOC entry 4760 (class 2606 OID 16549)
 -- Name: colecciones_canciones colecciones_canciones_canciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -827,7 +964,7 @@ ALTER TABLE ONLY public.colecciones_canciones
 
 
 --
--- TOC entry 4736 (class 2606 OID 16665)
+-- TOC entry 4761 (class 2606 OID 16554)
 -- Name: colecciones_canciones colecciones_canciones_colecciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -836,7 +973,7 @@ ALTER TABLE ONLY public.colecciones_canciones
 
 
 --
--- TOC entry 4734 (class 2606 OID 16660)
+-- TOC entry 4759 (class 2606 OID 16559)
 -- Name: colecciones colecciones_usuarios_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -845,7 +982,7 @@ ALTER TABLE ONLY public.colecciones
 
 
 --
--- TOC entry 4729 (class 2606 OID 16635)
+-- TOC entry 4762 (class 2606 OID 16564)
 -- Name: perfiles perfiles_usuarios_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -854,7 +991,7 @@ ALTER TABLE ONLY public.perfiles
 
 
 --
--- TOC entry 4730 (class 2606 OID 16640)
+-- TOC entry 4763 (class 2606 OID 16659)
 -- Name: puntuaciones puntuaciones_canciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -863,7 +1000,7 @@ ALTER TABLE ONLY public.puntuaciones
 
 
 --
--- TOC entry 4731 (class 2606 OID 16645)
+-- TOC entry 4764 (class 2606 OID 16654)
 -- Name: puntuaciones puntuaciones_usuarios_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -872,7 +1009,7 @@ ALTER TABLE ONLY public.puntuaciones
 
 
 --
--- TOC entry 4737 (class 2606 OID 16680)
+-- TOC entry 4765 (class 2606 OID 16579)
 -- Name: reproducciones reproducciones_canciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -881,7 +1018,7 @@ ALTER TABLE ONLY public.reproducciones
 
 
 --
--- TOC entry 4738 (class 2606 OID 16675)
+-- TOC entry 4766 (class 2606 OID 16584)
 -- Name: reproducciones reproducciones_usuarios_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -890,7 +1027,7 @@ ALTER TABLE ONLY public.reproducciones
 
 
 --
--- TOC entry 4732 (class 2606 OID 16655)
+-- TOC entry 4767 (class 2606 OID 16673)
 -- Name: reseñas reseñas_canciones_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -899,7 +1036,7 @@ ALTER TABLE ONLY public."reseñas"
 
 
 --
--- TOC entry 4733 (class 2606 OID 16650)
+-- TOC entry 4768 (class 2606 OID 16668)
 -- Name: reseñas reseñas_usuarios_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -907,7 +1044,7 @@ ALTER TABLE ONLY public."reseñas"
     ADD CONSTRAINT "reseñas_usuarios_fk" FOREIGN KEY (usuario_id) REFERENCES public.usuarios(id) ON UPDATE CASCADE ON DELETE CASCADE;
 
 
--- Completed on 2026-11-02 11:35:09
+-- Completed on 2026-11-02 14:06:46
 
 --
 -- PostgreSQL database dump complete
