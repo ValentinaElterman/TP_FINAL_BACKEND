@@ -8,6 +8,7 @@ const router = express.Router();
 router.post('/registro', registrar);
 router.post('/login', login);
 router.post('/logout', logout);
+
 //privada
 router.get('/me', verificarToken, me);
 

@@ -143,4 +143,4 @@ const me = async (req, res, next) => {
   }
 };
 
-module.exports = { registrar, login, logout, me };
+   module.exports = { registrar, login, logout, me, opcionesCookie };
