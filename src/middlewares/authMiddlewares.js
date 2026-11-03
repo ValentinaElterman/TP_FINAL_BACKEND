@@ -12,7 +12,7 @@ const verificarToken = async (req, res, next) => {
     try {
       payload = jwt.verify(token, process.env.JWT_SECRET);
     } catch (error) {
-      const vencido = error.name === 'Token Expirado';
+      const vencido = error.name === 'TokenExpiredError';
       return res.status(401).json({
         ok: false,
         mensaje: vencido ? 'La sesión venció, iniciá sesión de nuevo' : 'Token inválido',
@@ -24,7 +24,12 @@ const verificarToken = async (req, res, next) => {
       [payload.id]
     );
     const usuario = resultado.rows[0];
-    if (!usuario || !usuario.activo) {
+
+    if (!usuario) {
+      return res.status(401).json({ ok: false, mensaje: 'Usuario no válido' });
+    }
+
+    if (!usuario.activo) {
       return res.status(401).json({ ok: false, mensaje: 'Usuario no válido' });
     }
 

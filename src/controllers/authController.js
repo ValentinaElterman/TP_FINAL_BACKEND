@@ -2,13 +2,14 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query } = require('../config/db');
 
-const DURACION_MS = 2 * 60 * 60 * 1000; // 2 horas
+const DURACION_SEGUNDOS = 60 * 60 * 2; // 2 horas
+const DURACION_MS = DURACION_SEGUNDOS * 1000;
 
 const opcionesCookie = () => {
   const produccion = process.env.NODE_ENV === 'production';
   return {
-    httpOnly: true,                        // protegida desde el navegador
-    secure: produccion,                    //  https
+    httpOnly: true, // protegida desde el navegador
+    secure: produccion, //  https
     sameSite: produccion ? 'none' : 'lax', // 'none' si front y back están en dominios distintos
   };
 };
@@ -24,61 +25,84 @@ const registrar = async (req, res, next) => {
     const confirmarPassword = String(req.body.confirmarPassword || '');
 
     const errores = [];
+
     if (username.length < 5 || username.length > 10) {
       errores.push('El usuario debe tener entre 5 y 10 caracteres');
     }
-    if (!emailValido(email)) errores.push('El correo no es válido');
-    if (password.length < 8) errores.push('La contraseña debe tener al menos 8 caracteres');
-    if (password !== confirmarPassword) errores.push('Las contraseñas no coinciden');
+
+    if (!emailValido(email)) {
+      errores.push('El correo no es válido');
+    }
+
+    if (password.length < 8) {
+      errores.push('La contraseña debe tener al menos 8 caracteres');
+    }
+
+    if (password !== confirmarPassword) {
+      errores.push('Las contraseñas no coinciden');
+    }
 
     if (errores.length > 0) {
-      return res.status(400).json({ ok: false, mensaje: 'Datos inválidos', errores });
+      return res.status(400).json({
+        ok: false,
+        mensaje: 'Datos inválidos',
+        errores,
+      });
     }
 
     const existe = await query(
       'SELECT 1 FROM usuarios WHERE email = $1 OR username = $2',
       [email, username]
     );
+
     if (existe.rows.length > 0) {
-      return res.status(409).json({ ok: false, mensaje: 'El usuario o el correo ya están registrados' });
+      return res.status(409).json({
+        ok: false,
+        mensaje: 'El usuario o el correo ya están registrados',
+      });
     }
 
     const hash = await bcrypt.hash(password, 10);
 
-    // crea el usuario y su perfil juntos, misma consulta
-    const resultado = await query('BEGIN');
+    await query('BEGIN');
 
     try {
-    const resUsuario = await query(
+      const resUsuario = await query(
         `INSERT INTO usuarios (username, email, password, activo)
-        VALUES ($1, $2, $3, TRUE)
-        RETURNING id, username, email`,
+         VALUES ($1, $2, $3, TRUE)
+         RETURNING id, username, email`,
         [username, email, hash]
-    );
+      );
 
-    const nuevoUsuario = resUsuario.rows[0];
+      const usuarioCreado = resUsuario.rows[0];
 
-    await query(
+      await query(
         `INSERT INTO perfiles (usuario_id, nombre)
-        VALUES ($1, $2)`,
-        [nuevoUsuario.id, nuevoUsuario.username]
-    );
+         VALUES ($1, $2)`,
+        [usuarioCreado.id, usuarioCreado.username]
+      );
 
-    // Confirmamos los cambios si todo salió bien
-    await query('COMMIT');
+      await query('COMMIT');
 
-    // Guardamos el resultado final para tu lógica
-    const resultado = { rows: [nuevoUsuario] };
-
+      return res.status(201).json({
+        ok: true,
+        mensaje: 'Usuario registrado',
+        usuario: usuarioCreado,
+      });
     } catch (error) {
-        await query('ROLLBACK');
-        throw error;
+      await query('ROLLBACK');
+      throw error;
+    }
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({
+        ok: false,
+        mensaje: 'El usuario o el correo ya están registrados',
+      });
     }
 
-    res.status(201).json({ ok: true, mensaje: 'Usuario registrado', usuario: resultado.rows[0] });
-    } catch (error) {
-        next(error);
-    }
+    next(error);
+  }
 };
 
 // POST /api/auth/login
@@ -106,7 +130,7 @@ const login = async (req, res, next) => {
     }
 
     const token = jwt.sign({ id: usuario.id }, process.env.JWT_SECRET, {
-      expiresIn: DURACION_MS / 60, // en segundos
+      expiresIn: DURACION_SEGUNDOS,
     });
 
     res.cookie('token', token, { ...opcionesCookie(), maxAge: DURACION_MS });
@@ -123,8 +147,15 @@ const login = async (req, res, next) => {
 
 // POST /api/auth/logout
 const logout = (req, res) => {
+  const token = req.cookies && req.cookies.token;
+
   res.clearCookie('token', opcionesCookie());
-  res.json({ ok: true, mensaje: 'Sesión cerrada' });
+
+  if (!token) {
+    return res.status(200).json({ ok: true, mensaje: 'No había sesión activa' });
+  }
+
+  return res.json({ ok: true, mensaje: 'Sesión cerrada' });
 };
 
 // GET /api/auth/me
@@ -137,10 +168,16 @@ const me = async (req, res, next) => {
        WHERE u.id = $1`,
       [req.usuario.id]
     );
-    res.json({ ok: true, usuario: resultado.rows[0] });
+
+    const usuario = resultado.rows[0];
+    if (!usuario) {
+      return res.status(404).json({ ok: false, mensaje: 'Usuario no encontrado' });
+    }
+
+    res.json({ ok: true, usuario });
   } catch (error) {
     next(error);
   }
 };
 
-   module.exports = { registrar, login, logout, me, opcionesCookie };
+module.exports = { registrar, login, logout, me, opcionesCookie };
