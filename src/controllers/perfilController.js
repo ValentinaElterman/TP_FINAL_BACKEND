@@ -1,6 +1,11 @@
 const { query } = require('../config/db');
 const { opcionesCookie } = require('./authController');
 
+const esObjetoPlano = (valor) =>
+  valor !== null &&
+  !Array.isArray(valor) &&
+  Object.prototype.toString.call(valor) === '[object Object]';
+
 // GET /api/perfil 
 const obtenerPerfil = async (req, res, next) => {
   try {
@@ -45,7 +50,7 @@ const actualizarPerfil = async (req, res, next) => {
     if (req.body.foto !== undefined) {
       foto = String(req.body.foto || '').trim();
       if (foto === '') {
-        foto = null; 
+        foto = null;
       } else if (!/^https?:\/\/\S+$/i.test(foto) || foto.length > 500) {
         errores.push('La foto debe ser una URL válida');
       }
@@ -59,8 +64,8 @@ const actualizarPerfil = async (req, res, next) => {
 
     if (req.body.preferencias !== undefined) {
       const pref = req.body.preferencias;
-      if (typeof pref !== 'object' || pref === null || Array.isArray(pref)) {
-        errores.push('Las preferencias no son válidas');
+      if (!esObjetoPlano(pref)) {
+        errores.push('Las preferencias deben ser un objeto');
       } else {
         preferencias = pref;
       }
