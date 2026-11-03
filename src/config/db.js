@@ -1,6 +1,8 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+// en producción se usa DATABASE_URL (no existe)
+// en local se usan las variables del .env
 const pool = new Pool(
   process.env.DATABASE_URL
     ? {
@@ -16,5 +18,21 @@ const pool = new Pool(
       }
 );
 
-//preguntar
 pool.on('error', (err) => console.error('Error inesperado en el pool:', err.message));
+
+const query = (text, params) => pool.query(text, params);
+
+const probarConexion = async () => {
+  try {
+    const res = await pool.query('SELECT NOW()');
+    console.log('Conexión exitosa a PostgreSQL en:', res.rows[0].now);
+  } catch (error) {
+    console.error('Error al conectar con PostgreSQL:', error.message);
+  }
+};
+
+module.exports = {
+  pool,
+  query,
+  probarConexion,
+};
