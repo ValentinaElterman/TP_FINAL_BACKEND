@@ -11,7 +11,7 @@
 
 DROP TABLE IF EXISTS actividad            CASCADE;
 DROP TABLE IF EXISTS reproducciones       CASCADE;
-DROP TABLE IF EXISTS resenas              CASCADE;
+DROP TABLE IF EXISTS "reseñas"            CASCADE;
 DROP TABLE IF EXISTS puntuaciones         CASCADE;
 DROP TABLE IF EXISTS colecciones_canciones CASCADE;
 DROP TABLE IF EXISTS colecciones          CASCADE;
@@ -33,7 +33,7 @@ CREATE TABLE usuarios (
     id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     username       VARCHAR(50)  NOT NULL UNIQUE,
     email          VARCHAR(100) NOT NULL UNIQUE,
-    password_hash  VARCHAR(255) NOT NULL,          -- hash de bcrypt, nunca la contraseña real
+    password       VARCHAR(255) NOT NULL,          -- guarda el HASH de bcrypt, nunca la contraseña real
     activo         BOOLEAN      NOT NULL DEFAULT TRUE,
     fecha_registro TIMESTAMP    NOT NULL DEFAULT NOW()
 );
@@ -61,14 +61,14 @@ CREATE TABLE generos (
 
 CREATE TABLE artistas (
     id          INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    external_id VARCHAR(100) UNIQUE,
+    external_id VARCHAR(100) NOT NULL UNIQUE,
     nombre      VARCHAR(150) NOT NULL,
     foto        VARCHAR(500)
 );
 
 CREATE TABLE albumes (
     id                INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    external_id       VARCHAR(100) UNIQUE,
+    external_id       VARCHAR(100) NOT NULL UNIQUE,
     titulo            VARCHAR(200) NOT NULL,
     foto              VARCHAR(500),
     fecha_lanzamiento DATE
@@ -76,7 +76,7 @@ CREATE TABLE albumes (
 
 CREATE TABLE canciones (
     id                INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    external_id       VARCHAR(100) UNIQUE,
+    external_id       VARCHAR(100) NOT NULL UNIQUE,
     titulo            VARCHAR(200) NOT NULL,
     album_id          INTEGER REFERENCES albumes(id) ON UPDATE CASCADE ON DELETE SET NULL,
     duracion          INTEGER NOT NULL CHECK (duracion > 0),  -- en segundos
@@ -152,7 +152,7 @@ CREATE TABLE puntuaciones (
     UNIQUE (usuario_id, cancion_id)
 );
 
-CREATE TABLE resenas (
+CREATE TABLE "reseñas" (
     id                  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     usuario_id          INTEGER NOT NULL REFERENCES usuarios(id)  ON UPDATE CASCADE ON DELETE CASCADE,
     cancion_id          INTEGER NOT NULL REFERENCES canciones(id) ON UPDATE CASCADE ON DELETE CASCADE,
