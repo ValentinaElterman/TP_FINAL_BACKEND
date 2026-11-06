@@ -9,14 +9,14 @@ const opcionesCookie = () => {
   const produccion = process.env.NODE_ENV === 'production';
   return {
     httpOnly: true, // protegida desde el navegador
-    secure: produccion, //  https
+    secure: produccion, // https
     sameSite: produccion ? 'none' : 'lax', // 'none' si front y back están en dominios distintos
   };
 };
 
 const emailValido = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-// POST /api/auth/registro
+// POST /api/auth/registro (creamos el perfil junto con el usuario)
 const registrar = async (req, res, next) => {
   try {
     const username = String(req.body.username || '').trim();
@@ -180,4 +180,135 @@ const me = async (req, res, next) => {
   }
 };
 
-module.exports = { registrar, login, logout, me, opcionesCookie };
+// PUT /api/auth/actualizar
+const actualizar = async (req, res, next) => {
+  try {
+    const usuarioId = req.usuario.id;
+    const { username, email, password } = req.body;
+
+    const errores = [];
+
+    if (username !== undefined) {
+      const usernameTrim = String(username).trim();
+      if (usernameTrim.length < 5 || usernameTrim.length > 10) {
+        errores.push('El usuario debe tener entre 5 y 10 caracteres');
+      }
+    }
+
+    if (email !== undefined) {
+      const emailTrim = String(email).trim().toLowerCase();
+      if (!emailValido(emailTrim)) {
+        errores.push('El correo no es válido');
+      }
+    }
+
+    if (password !== undefined) {
+      const passwordStr = String(password);
+      if (passwordStr.length < 8) {
+        errores.push('La contraseña debe tener al menos 8 caracteres');
+      }
+    }
+
+    if (errores.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: 'Datos inválidos',
+        errores,
+      });
+    }
+
+    if (username !== undefined) {
+      const usernameTrim = String(username).trim();
+
+      const existe = await query(
+        'SELECT id FROM usuarios WHERE username = $1 AND id != $2',
+        [usernameTrim, usuarioId]
+      );
+      if (existe.rows.length > 0) {
+        return res.status(409).json({
+          ok: false,
+          mensaje: 'El nombre de usuario ya está registrado',
+        });
+      }
+
+      await query(
+        'UPDATE usuarios SET username = $1 WHERE id = $2',
+        [usernameTrim, usuarioId]
+      );
+    }
+
+    if (email !== undefined) {
+      const emailTrim = String(email).trim().toLowerCase();
+
+      const existe = await query(
+        'SELECT id FROM usuarios WHERE email = $1 AND id != $2',
+        [emailTrim, usuarioId]
+      );
+      if (existe.rows.length > 0) {
+        return res.status(409).json({
+          ok: false,
+          mensaje: 'El correo ya está registrado',
+        });
+      }
+
+      await query(
+        'UPDATE usuarios SET email = $1 WHERE id = $2',
+        [emailTrim, usuarioId]
+      );
+    }
+
+    if (password !== undefined) {
+      const hash = await bcrypt.hash(String(password), 10);
+      await query(
+        'UPDATE usuarios SET password = $1 WHERE id = $2',
+        [hash, usuarioId]
+      );
+    }
+
+    const resultado = await query(
+      'SELECT id, username, email FROM usuarios WHERE id = $1',
+      [usuarioId]
+    );
+
+    return res.json({
+      ok: true,
+      mensaje: 'Usuario actualizado correctamente',
+      usuario: resultado.rows[0],
+    });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({
+        ok: false,
+        mensaje: 'El usuario o el correo ya están registrados',
+      });
+    }
+    next(error);
+  }
+};
+
+// DELETE /api/auth/eliminar
+const eliminar = async (req, res, next) => {
+  try {
+    const usuarioId = req.usuario.id;
+
+    const resultado = await query(
+      'DELETE FROM usuarios WHERE id = $1 RETURNING id',
+      [usuarioId]
+    );
+
+    if (resultado.rows.length === 0) {
+      return res.status(404).json({ ok: false, mensaje: 'Usuario no encontrado' });
+    }
+
+    res.clearCookie('token', opcionesCookie());
+
+    return res.json({
+      ok: true,
+      mensaje: 'Cuenta eliminada correctamente',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { registrar, login, logout, me, actualizar, eliminar, opcionesCookie };
