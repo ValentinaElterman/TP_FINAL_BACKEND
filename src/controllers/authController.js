@@ -14,6 +14,55 @@ const opcionesCookie = () => {
   };
 };
 
+const { intercambiarCodigoUsuarioSpotify, importarHistorialUsuarioSpotify,} = require('../services/apiService');
+
+// GET /api/auth/spotify/url -> Devuelve la URL de autorización a React
+const obtenerUrlSpotify = (req, res) => {
+  const scopes = [
+    'user-read-recently-played',
+    'user-top-read',
+    'user-read-private',
+  ].join(' ');
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: process.env.SPOTIFY_CLIENT_ID,
+    scope: scopes,
+    redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
+  });
+
+  return res.json({
+    ok: true,
+    url: `https://accounts.spotify.com/authorize?${params.toString()}`,
+  });
+};
+
+// POST /api/auth/spotify/importar -> Recibe el "code" desde Axios y guarda el historial
+const importarSpotify = async (req, res, next) => {
+  try {
+    const { code } = req.body;
+
+    if (!code) {
+      return res.status(400).json({ ok: false, mensaje: 'Falta el código de autorización de Spotify' });
+    }
+
+    // 1. Intercambiar el code por el token personal del usuario
+    const tokenData = await intercambiarCodigoUsuarioSpotify(code);
+
+    // 2. Descargar historial + top tracks y guardarlos en PostgreSQL
+    const cancionesImportadas = await importarHistorialUsuarioSpotify(tokenData.access_token);
+
+    return res.json({
+      ok: true,
+      mensaje: `Se importaron ${cancionesImportadas.length} canciones desde Spotify`,
+      total: cancionesImportadas.length,
+      canciones: cancionesImportadas,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const emailValido = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 // POST /api/auth/registro (creamos el perfil junto con el usuario)
@@ -311,4 +360,4 @@ const eliminar = async (req, res, next) => {
   }
 };
 
-module.exports = { registrar, login, logout, me, actualizar, eliminar, opcionesCookie };
+module.exports = { registrar, login, logout, me, actualizar, eliminar, opcionesCookie, obtenerUrlSpotify, importarSpotify };

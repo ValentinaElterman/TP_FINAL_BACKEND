@@ -151,8 +151,129 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
   }
 };
 
+// Intercambiar el "code" que devuelve Spotify por el token personal del usuario
+const intercambiarCodigoUsuarioSpotify = async (code) => {
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  const redirectUri = process.env.SPOTIFY_REDIRECT_URI;
+
+  const credenciales = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+  const params = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+  });
+
+  const response = await axios.post(
+    'https://accounts.spotify.com/api/token',
+    params.toString(),
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${credenciales}`,
+      },
+    }
+  );
+
+  return response.data; // devuelve { access_token, refresh_token, expires_in }
+};
+
+// Obtener historial reciente (últimas 50) y top canciones del usuario
+const importarHistorialUsuarioSpotify = async (userAccessToken) => {
+  const headers = { Authorization: `Bearer ${userAccessToken}` };
+
+  // 1. Traer últimas 50 reproducciones reales
+  const recientesRes = await axios.get(
+    'https://api.spotify.com/v1/me/player/recently-played',
+    { headers, params: { limit: 50 } }
+  );
+
+  // 2. Traer top 50 canciones más escuchadas (mediano plazo ~6 meses)
+  const topRes = await axios.get(
+    'https://api.spotify.com/v1/me/top/tracks',
+    { headers, params: { limit: 50, time_range: 'medium_term' } }
+  );
+
+  const itemsRecientes = recientesRes.data.items || [];
+  const itemsTop = topRes.data.items || [];
+
+  const cancionesGuardadas = [];
+  const idsProcesados = new Set();
+
+  // Guardar historial reciente en la bd
+  for (const item of itemsRecientes) {
+    const track = item.track;
+    if (track && !idsProcesados.has(track.id)) {
+      idsProcesados.add(track.id);
+      const local = await guardarObtenerCancionLocal(track);
+      cancionesGuardadas.push({
+        ...local,
+        origen: 'reciente',
+        escuchada_en: item.played_at,
+      });
+    }
+  }
+
+  // Guardar top tracks en la bd
+  for (const track of itemsTop) {
+    if (track && !idsProcesados.has(track.id)) {
+      idsProcesados.add(track.id);
+      const local = await guardarObtenerCancionLocal(track);
+      cancionesGuardadas.push({
+        ...local,
+        origen: 'top',
+      });
+    }
+  }
+
+  return cancionesGuardadas;
+};
+
+const registrarHistorialEnBiblioteca = async (usuarioId, cancionesImportadas) => {
+  for (const item of cancionesImportadas) {
+    const fechaEscucha = item.escuchada_en ? new Date(item.escuchada_en) : new Date();
+
+    // guardar o actualizar
+    await query(
+      `INSERT INTO biblioteca (usuario_id, cancion_id, estado, es_favorita, fecha_agregado, fecha_actualizacion)
+       VALUES ($1, $2, 'escuchado', FALSE, $3, $3)
+       ON CONFLICT (usuario_id, cancion_id)
+       DO UPDATE SET
+         estado = 'escuchado',
+         fecha_actualizacion = GREATEST(biblioteca.fecha_actualizacion, EXCLUDED.fecha_actualizacion)`,
+      [usuarioId, item.id, fechaEscucha]
+    );
+
+    const yaRegistrada = await query(
+      `SELECT 1 FROM reproducciones
+       WHERE usuario_id = $1 AND cancion_id = $2 AND fecha_inicio = $3`,
+      [usuarioId, item.id, fechaEscucha]
+    );
+
+    if (yaRegistrada.rows.length === 0) {
+      await query(
+        `INSERT INTO reproducciones (usuario_id, cancion_id, fecha_inicio, segundos_escuchados, completada, fuente)
+         VALUES ($1, $2, $3, $4, TRUE, 'spotify')`,
+        [usuarioId, item.id, fechaEscucha, item.duracion]
+      );
+    }
+  }
+
+  if (cancionesImportadas.length > 0) {
+    await query(
+      `INSERT INTO actividad (usuario_id, tipo, detalles)
+       VALUES ($1, 'importar_spotify', $2::jsonb)`,
+      [usuarioId, JSON.stringify({ canciones_importadas: cancionesImportadas.length })]
+    );
+  }
+};
+
 module.exports = {
   buscarCancionesExterno,
   obtenerCancionExternaPorId,
   guardarObtenerCancionLocal,
+  intercambiarCodigoUsuarioSpotify,
+  importarHistorialUsuarioSpotify,
+  registrarHistorialEnBiblioteca
 };
