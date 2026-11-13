@@ -176,8 +176,7 @@ DAI-EFSI-FRONTEND/
 
 Instalación Local: npm i
 
-Variables Necesarias: PORT, DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET, JWT_EXPIRES_IN, FRONTEND_URL
-AGRREGAR LAS DE LA API DE SPOTIFY!!!!!
+Variables Necesarias: PORT, DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET, JWT_EXPIRES_IN, FRONTEND_URL, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI
 
 Comandos para Correr el Proyecto:
 - BACKEND: npm i, node server.js // npm run dev
@@ -199,6 +198,10 @@ Endpoint del Backend:
 2. GET /api/perfil
 3. PUT /api/perfil
 4. DELETE /api/perfil
+
+- Spotify:
+1. GET /api/auth/spotify/url
+2. POST /api/auth/spotify/importar
 
 - habran mas proximamente!
 
