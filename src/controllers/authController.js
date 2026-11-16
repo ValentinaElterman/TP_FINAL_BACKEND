@@ -14,7 +14,11 @@ const opcionesCookie = () => {
   };
 };
 
-const { intercambiarCodigoUsuarioSpotify, importarHistorialUsuarioSpotify,} = require('../services/apiService');
+const {
+  intercambiarCodigoUsuarioSpotify,
+  importarHistorialUsuarioSpotify,
+  registrarHistorialEnBiblioteca,
+} = require('../services/apiService');
 
 // GET /api/auth/spotify/url -> Devuelve la URL de autorización a React
 const obtenerUrlSpotify = (req, res) => {
@@ -51,6 +55,11 @@ const importarSpotify = async (req, res, next) => {
 
     // 2. Descargar historial + top tracks y guardarlos en PostgreSQL
     const cancionesImportadas = await importarHistorialUsuarioSpotify(tokenData.access_token);
+
+    // 3. Vincular el historial al perfil del usuario autenticado
+    if (cancionesImportadas.length > 0) {
+      await registrarHistorialEnBiblioteca(req.usuario.id, cancionesImportadas);
+    }
 
     return res.json({
       ok: true,

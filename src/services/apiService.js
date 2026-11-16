@@ -179,55 +179,43 @@ const intercambiarCodigoUsuarioSpotify = async (code) => {
   return response.data; // devuelve { access_token, refresh_token, expires_in }
 };
 
-// Obtener historial reciente (últimas 50) y top canciones del usuario
-const importarHistorialUsuarioSpotify = async (userAccessToken) => {
-  const headers = { Authorization: `Bearer ${userAccessToken}` };
+const { 
+  intercambiarCodigoUsuarioSpotify, 
+  importarHistorialUsuarioSpotify,
+  registrarHistorialEnBiblioteca // <-- AGREGA ESTA IMPORTACIÓN
+} = require('../services/apiService');
 
-  // 1. Traer últimas 50 reproducciones reales
-  const recientesRes = await axios.get(
-    'https://api.spotify.com/v1/me/player/recently-played',
-    { headers, params: { limit: 50 } }
-  );
 
-  // 2. Traer top 50 canciones más escuchadas (mediano plazo ~6 meses)
-  const topRes = await axios.get(
-    'https://api.spotify.com/v1/me/top/tracks',
-    { headers, params: { limit: 50, time_range: 'medium_term' } }
-  );
+// Modifica la función importarSpotify:
+const importarSpotify = async (req, res, next) => {
+  try {
+    const { code } = req.body;
+    const usuarioId = req.usuario.id; // <-- Obtenemos el ID del usuario logueado gracias a verificarToken
 
-  const itemsRecientes = recientesRes.data.items || [];
-  const itemsTop = topRes.data.items || [];
-
-  const cancionesGuardadas = [];
-  const idsProcesados = new Set();
-
-  // Guardar historial reciente en la bd
-  for (const item of itemsRecientes) {
-    const track = item.track;
-    if (track && !idsProcesados.has(track.id)) {
-      idsProcesados.add(track.id);
-      const local = await guardarObtenerCancionLocal(track);
-      cancionesGuardadas.push({
-        ...local,
-        origen: 'reciente',
-        escuchada_en: item.played_at,
-      });
+    if (!code) {
+      return res.status(400).json({ ok: false, mensaje: 'Falta el código de autorización de Spotify' });
     }
-  }
 
-  // Guardar top tracks en la bd
-  for (const track of itemsTop) {
-    if (track && !idsProcesados.has(track.id)) {
-      idsProcesados.add(track.id);
-      const local = await guardarObtenerCancionLocal(track);
-      cancionesGuardadas.push({
-        ...local,
-        origen: 'top',
-      });
+    // 1. Intercambiar el code por el token personal
+    const tokenData = await intercambiarCodigoUsuarioSpotify(code);
+
+    // 2. Descargar historial + top tracks y guardarlos en el catálogo general
+    const cancionesImportadas = await importarHistorialUsuarioSpotify(tokenData.access_token);
+
+    // 3. VINCULAR AL USUARIO (ESTO FALTABA) 🚀
+    if (cancionesImportadas.length > 0) {
+      await registrarHistorialEnBiblioteca(usuarioId, cancionesImportadas);
     }
-  }
 
-  return cancionesGuardadas;
+    return res.json({
+      ok: true,
+      mensaje: `Se importaron ${cancionesImportadas.length} canciones desde Spotify`,
+      total: cancionesImportadas.length,
+      canciones: cancionesImportadas,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 const registrarHistorialEnBiblioteca = async (usuarioId, cancionesImportadas) => {
