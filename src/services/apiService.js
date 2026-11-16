@@ -6,7 +6,7 @@ const spotifyTokenState = {
   expirationTime: 0,
 };
 
-// obtener o renovar el Access Token de Spotify
+// Obtener o renovar el Access Token general de Spotify (Client Credentials)
 const obtenerSpotifyToken = async () => {
   const ahora = Date.now();
   if (spotifyTokenState.accessToken && ahora < spotifyTokenState.expirationTime) {
@@ -39,7 +39,7 @@ const obtenerSpotifyToken = async () => {
   return spotifyTokenState.accessToken;
 };
 
-// consultas a la api
+// Consultas al catálogo de Spotify
 const buscarCancionesExterno = async (queryBusqueda) => {
   const token = await obtenerSpotifyToken();
   const response = await axios.get('https://api.spotify.com/v1/search', {
@@ -179,50 +179,52 @@ const intercambiarCodigoUsuarioSpotify = async (code) => {
   return response.data; // devuelve { access_token, refresh_token, expires_in }
 };
 
-const { 
-  intercambiarCodigoUsuarioSpotify, 
-  importarHistorialUsuarioSpotify,
-  registrarHistorialEnBiblioteca // <-- AGREGA ESTA IMPORTACIÓN
-} = require('../services/apiService');
+// Descargar historial reciente y top tracks del usuario desde Spotify y guardarlos localmente
+const importarHistorialUsuarioSpotify = async (accessToken) => {
+  const headers = { Authorization: `Bearer ${accessToken}` };
 
+  const [resRecientes, resTop] = await Promise.all([
+    axios.get('https://api.spotify.com/v1/me/player/recently-played', {
+      headers,
+      params: { limit: 20 },
+    }),
+    axios.get('https://api.spotify.com/v1/me/top/tracks', {
+      headers,
+      params: { limit: 20 },
+    }),
+  ]);
 
-// Modifica la función importarSpotify:
-const importarSpotify = async (req, res, next) => {
-  try {
-    const { code } = req.body;
-    const usuarioId = req.usuario.id; // <-- Obtenemos el ID del usuario logueado gracias a verificarToken
+  const mapaCanciones = new Map();
 
-    if (!code) {
-      return res.status(400).json({ ok: false, mensaje: 'Falta el código de autorización de Spotify' });
+  for (const item of resRecientes.data?.items || []) {
+    if (!item.track) continue;
+    const cancionLocal = await guardarObtenerCancionLocal(item.track);
+    if (!mapaCanciones.has(cancionLocal.id)) {
+      mapaCanciones.set(cancionLocal.id, {
+        ...cancionLocal,
+        escuchada_en: item.played_at || null,
+      });
     }
-
-    // 1. Intercambiar el code por el token personal
-    const tokenData = await intercambiarCodigoUsuarioSpotify(code);
-
-    // 2. Descargar historial + top tracks y guardarlos en el catálogo general
-    const cancionesImportadas = await importarHistorialUsuarioSpotify(tokenData.access_token);
-
-    // 3. VINCULAR AL USUARIO (ESTO FALTABA) 🚀
-    if (cancionesImportadas.length > 0) {
-      await registrarHistorialEnBiblioteca(usuarioId, cancionesImportadas);
-    }
-
-    return res.json({
-      ok: true,
-      mensaje: `Se importaron ${cancionesImportadas.length} canciones desde Spotify`,
-      total: cancionesImportadas.length,
-      canciones: cancionesImportadas,
-    });
-  } catch (error) {
-    next(error);
   }
+
+  for (const track of resTop.data?.items || []) {
+    if (!track) continue;
+    const cancionLocal = await guardarObtenerCancionLocal(track);
+    if (!mapaCanciones.has(cancionLocal.id)) {
+      mapaCanciones.set(cancionLocal.id, {
+        ...cancionLocal,
+        escuchada_en: null,
+      });
+    }
+  }
+
+  return Array.from(mapaCanciones.values());
 };
 
 const registrarHistorialEnBiblioteca = async (usuarioId, cancionesImportadas) => {
   for (const item of cancionesImportadas) {
     const fechaEscucha = item.escuchada_en ? new Date(item.escuchada_en) : new Date();
 
-    // guardar o actualizar
     await query(
       `INSERT INTO biblioteca (usuario_id, cancion_id, estado, es_favorita, fecha_agregado, fecha_actualizacion)
        VALUES ($1, $2, 'escuchado', FALSE, $3, $3)
@@ -263,5 +265,5 @@ module.exports = {
   guardarObtenerCancionLocal,
   intercambiarCodigoUsuarioSpotify,
   importarHistorialUsuarioSpotify,
-  registrarHistorialEnBiblioteca
+  registrarHistorialEnBiblioteca,
 };
