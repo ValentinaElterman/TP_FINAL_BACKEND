@@ -1,3 +1,7 @@
 node_modules
 
 .env
+
+git rm --cached cookies.txt
+del cookies.txt
+echo cookies.txt >> .gitignore
