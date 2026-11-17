@@ -26,7 +26,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/perfil', require('./routes/perfilRoutes'));
 //app.use('/api/musica', require('./routes/musicaRoutes'));
-//app.use('/api/biblioteca', require('./routes/bibliotecaRoutes'));
+app.use('/api/biblioteca', require('./routes/bibliotecaRoutes'));
 //app.use('/api/puntuaciones', require('./routes/puntuacionesRoutes'));
 //app.use('/api/resenas', require('./routes/reseñasRoutes'));
 //app.use('/api/colecciones', require('./routes/coleccionesRoutes'));
