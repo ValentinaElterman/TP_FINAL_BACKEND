@@ -176,13 +176,13 @@ DAI-EFSI-FRONTEND/
 
 Instalación Local: npm i
 
-Variables Necesarias: PORT, DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET, JWT_EXPIRES_IN, FRONTEND_URL, SPOTIFY_CLIENT_ID, las de last
+Variables Necesarias: PORT, DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET, JWT_EXPIRES_IN, FRONTEND_URL, LASTFM_API_KEY, LASTFM_SHARED_SECRET
 
 Comandos para Correr el Proyecto:
 - BACKEND: npm i, node server.js // npm run dev
 - FRONTEND: npm i, npm run dev
 
-API Externa: https://developer.spotify.com/documentation/web-api
+API Externa: 'https://ws.audioscrobbler.com/2.0/'
 
 Endpoint del Backend:
 - Usuario:
@@ -198,10 +198,6 @@ Endpoint del Backend:
 2. GET /api/perfil
 3. PUT /api/perfil
 4. DELETE /api/perfil
-
-- Spotify:
-1. GET /api/auth/spotify/url
-2. POST /api/auth/spotify/importar
 
 - habran mas proximamente!
 

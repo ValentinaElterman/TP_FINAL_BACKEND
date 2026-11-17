@@ -1,10 +1,10 @@
 const express = require('express');
 const {
-  obtenerReseñas,
+  obtenerResenas,
   crearReseña,
   actualizarReseña,
   eliminarReseña
-} = require('../controllers/reseñasController');
+} = require('../controllers/resenasController');
 const { verificarToken } = require('../middlewares/authMiddlewares');
 
 const router = express.Router();
@@ -12,7 +12,7 @@ const router = express.Router();
 // todo privado
 router.use(verificarToken);
 
-router.get('/', obtenerReseñas);
+router.get('/', obtenerResenas);
 router.post('/', crearReseña);
 router.put('/:id', actualizarReseña);
 router.delete('/:id', eliminarReseña);

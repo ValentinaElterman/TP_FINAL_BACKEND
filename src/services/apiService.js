@@ -1,9 +1,7 @@
 const axios = require('axios');
-const { query } = require('../config/db');
-
+const { query, pool } = require('../config/db');
 
 const LASTFM_BASE_URL = 'https://ws.audioscrobbler.com/2.0/';
-
 
 const getApiKey = () => {
   const apiKey = process.env.LASTFM_API_KEY || process.env.API_KEY;
@@ -13,8 +11,7 @@ const getApiKey = () => {
   return apiKey;
 };
 
-
-// Extrae la imagen de mayor calidad del array de imágenes de Last.fm
+// Extrae la imagen de mayor calidad de imágenes de Last.fm
 const extraerImagen = (images = []) => {
   if (!Array.isArray(images)) return null;
   const prioridades = ['extralarge', 'large', 'medium', 'small'];
@@ -27,8 +24,7 @@ const extraerImagen = (images = []) => {
   return null;
 };
 
-
-// Genera un ID único estable aunque Last.fm devuelva vacío (mbid es lo que diferencia a las cancions/artistas, etc)
+// ID aunque Last.fm devuelva vacío
 const generarExternalId = (prefijo, mbid, ...partes) => {
   if (mbid && String(mbid).trim() !== '') {
     return String(mbid).trim();
@@ -40,8 +36,7 @@ const generarExternalId = (prefijo, mbid, ...partes) => {
   return `lastfm:${prefijo}:${slug}`;
 };
 
-
-// Buscar canciones en Last.fm
+// Buscar canciones
 const buscarCancionesExterno = async (queryBusqueda, limit = 20) => {
   const response = await axios.get(LASTFM_BASE_URL, {
     params: {
@@ -53,9 +48,7 @@ const buscarCancionesExterno = async (queryBusqueda, limit = 20) => {
     },
   });
 
-
   const tracks = response.data?.results?.trackmatches?.track || [];
-
 
   return tracks.map((t) => ({
     external_id: generarExternalId('track', t.mbid, t.artist, t.name),
@@ -68,7 +61,6 @@ const buscarCancionesExterno = async (queryBusqueda, limit = 20) => {
   }));
 };
 
-
 // Obtener detalle completo de una canción
 const obtenerCancionExterna = async ({ artista, titulo, mbid }) => {
   const params = {
@@ -78,7 +70,6 @@ const obtenerCancionExterna = async ({ artista, titulo, mbid }) => {
     autocorrect: 1,
   };
 
-
   if (mbid) {
     params.mbid = mbid;
   } else {
@@ -86,18 +77,14 @@ const obtenerCancionExterna = async ({ artista, titulo, mbid }) => {
     params.track = titulo;
   }
 
-
   const response = await axios.get(LASTFM_BASE_URL, { params });
-
 
   if (response.data?.error) {
     throw new Error(response.data.message || 'Canción no encontrada');
   }
 
-
   return response.data.track;
 };
-
 
 // Guardar o recuperar la canción (y su artista, álbum y géneros) en PostgreSQL
 const guardarObtenerCancionLocal = async (trackInfo) => {
@@ -105,24 +92,22 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
   const nombreArtista = trackInfo.artist?.name || trackInfo.artist;
   const externalTrackId = generarExternalId('track', trackInfo.mbid, nombreArtista, nombreCancion);
 
-
   const cancionExistente = await query(
     'SELECT * FROM canciones WHERE external_id = $1',
     [externalTrackId]
   );
 
-
   if (cancionExistente.rows.length > 0) {
     return cancionExistente.rows[0];
   }
 
-
-  await query('BEGIN');
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Álbum (opcional en Last.fm)
     let albumId = null;
     let fotoCancion = null;
-
 
     if (trackInfo.album && trackInfo.album.title) {
       const tituloAlbum = trackInfo.album.title;
@@ -135,14 +120,12 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
       );
       fotoCancion = extraerImagen(trackInfo.album.image);
 
-
-      const albumRes = await query('SELECT id FROM albumes WHERE external_id = $1', [
+      const albumRes = await client.query('SELECT id FROM albumes WHERE external_id = $1', [
         externalAlbumId,
       ]);
 
-
       if (albumRes.rows.length === 0) {
-        const nuevoAlbum = await query(
+        const nuevoAlbum = await client.query(
           `INSERT INTO albumes (external_id, titulo, foto)
            VALUES ($1, $2, $3)
            RETURNING id`,
@@ -154,19 +137,16 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
       }
     }
 
-
-    // Canción - Last.fm devuelve duration en milisegundos como string (ej: "215000")
+    // Canción - Last.fm devuelve duration en milisegundos como string
     const duracionSegundos = Math.max(0, Math.round((Number(trackInfo.duration) || 0) / 1000));
 
-
-    const nuevaCancion = await query(
+    const nuevaCancion = await client.query(
       `INSERT INTO canciones (external_id, titulo, album_id, duracion, foto)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
       [externalTrackId, nombreCancion, albumId, duracionSegundos, fotoCancion]
     );
     const cancionGuardada = nuevaCancion.rows[0];
-
 
     // Artista
     if (nombreArtista) {
@@ -176,15 +156,13 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
         nombreArtista
       );
 
-
-      const artistaRes = await query('SELECT id FROM artistas WHERE external_id = $1', [
+      const artistaRes = await client.query('SELECT id FROM artistas WHERE external_id = $1', [
         externalArtistaId,
       ]);
 
-
       let artistaId;
       if (artistaRes.rows.length === 0) {
-        const nuevoArtista = await query(
+        const nuevoArtista = await client.query(
           `INSERT INTO artistas (external_id, nombre)
            VALUES ($1, $2)
            RETURNING id`,
@@ -195,8 +173,7 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
         artistaId = artistaRes.rows[0].id;
       }
 
-
-      await query(
+      await client.query(
         `INSERT INTO cancion_artistas (cancion_id, artista_id)
          VALUES ($1, $2)
          ON CONFLICT DO NOTHING`,
@@ -204,15 +181,13 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
       );
     }
 
-
     // Géneros - Last.fm devuelve toptags.tag
     const tags = trackInfo.toptags?.tag || [];
     for (const tag of tags.slice(0, 5)) {
       if (!tag.name) continue;
       const nombreGenero = String(tag.name).trim().toLowerCase();
 
-
-      const generoRes = await query(
+      const generoRes = await client.query(
         `INSERT INTO generos (nombre)
          VALUES ($1)
          ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
@@ -220,8 +195,7 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
         [nombreGenero]
       );
 
-
-      await query(
+      await client.query(
         `INSERT INTO cancion_generos (cancion_id, genero_id)
          VALUES ($1, $2)
          ON CONFLICT DO NOTHING`,
@@ -229,19 +203,18 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
       );
     }
 
-
-    await query('COMMIT');
+    await client.query('COMMIT');
     return cancionGuardada;
   } catch (error) {
-    await query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 };
-
 
 module.exports = {
   buscarCancionesExterno,
   obtenerCancionExterna,
   guardarObtenerCancionLocal,
 };
-
