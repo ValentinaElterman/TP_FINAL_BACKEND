@@ -28,11 +28,7 @@ const opcionesCookie = () => {
 
 // GET /api/auth/spotify/url -> Devuelve la URL de autorización a React
 const obtenerUrlSpotify = (req, res) => {
-  const scopes = [
-    'user-read-recently-played',
-    'user-top-read',
-    'user-read-private',
-  ].join(' ');
+  const scopes = ['user-read-recently-played', 'user-top-read', 'user-read-private'].join(' ');
 
   const params = new URLSearchParams({
     response_type: 'code',
