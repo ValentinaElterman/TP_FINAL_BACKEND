@@ -6,7 +6,7 @@ const spotifyTokenState = {
   expirationTime: 0,
 };
 
-// obtener o renovar el Access Token de Spotify
+// Obtener o renovar el Access Token de Spotify (Client Credentials)
 const obtenerSpotifyToken = async () => {
   const ahora = Date.now();
   if (spotifyTokenState.accessToken && ahora < spotifyTokenState.expirationTime) {
@@ -39,7 +39,7 @@ const obtenerSpotifyToken = async () => {
   return spotifyTokenState.accessToken;
 };
 
-// consultas a la api
+// Consultas a la API pública
 const buscarCancionesExterno = async (queryBusqueda) => {
   const token = await obtenerSpotifyToken();
   const response = await axios.get('https://api.spotify.com/v1/search', {
@@ -176,53 +176,58 @@ const intercambiarCodigoUsuarioSpotify = async (code) => {
     }
   );
 
-  return response.data; // devuelve { access_token, refresh_token, expires_in }
+  return response.data;
 };
 
-const { 
-  intercambiarCodigoUsuarioSpotify, 
-  importarHistorialUsuarioSpotify,
-  registrarHistorialEnBiblioteca // <-- AGREGA ESTA IMPORTACIÓN
-} = require('../services/apiService');
+// Descargar historial reciente y top tracks del usuario y guardarlos en el catálogo local
+const importarHistorialUsuarioSpotify = async (userAccessToken) => {
+  const headers = { Authorization: `Bearer ${userAccessToken}` };
 
+  const [recientesRes, topRes] = await Promise.all([
+    axios.get('https://api.spotify.com/v1/me/player/recently-played', {
+      headers,
+      params: { limit: 50 },
+    }),
+    axios.get('https://api.spotify.com/v1/me/top/tracks', {
+      headers,
+      params: { limit: 50, time_range: 'medium_term' },
+    }),
+  ]);
 
-// Modifica la función importarSpotify:
-const importarSpotify = async (req, res, next) => {
-  try {
-    const { code } = req.body;
-    const usuarioId = req.usuario.id; // <-- Obtenemos el ID del usuario logueado gracias a verificarToken
+  const recientes = recientesRes.data.items || [];
+  const topTracks = topRes.data.items || [];
 
-    if (!code) {
-      return res.status(400).json({ ok: false, mensaje: 'Falta el código de autorización de Spotify' });
-    }
+  const cancionesProcesadas = [];
+  const idsVistos = new Set();
 
-    // 1. Intercambiar el code por el token personal
-    const tokenData = await intercambiarCodigoUsuarioSpotify(code);
-
-    // 2. Descargar historial + top tracks y guardarlos en el catálogo general
-    const cancionesImportadas = await importarHistorialUsuarioSpotify(tokenData.access_token);
-
-    // 3. VINCULAR AL USUARIO (ESTO FALTABA) 🚀
-    if (cancionesImportadas.length > 0) {
-      await registrarHistorialEnBiblioteca(usuarioId, cancionesImportadas);
-    }
-
-    return res.json({
-      ok: true,
-      mensaje: `Se importaron ${cancionesImportadas.length} canciones desde Spotify`,
-      total: cancionesImportadas.length,
-      canciones: cancionesImportadas,
+  for (const item of recientes) {
+    if (!item.track) continue;
+    const cancionLocal = await guardarObtenerCancionLocal(item.track);
+    cancionesProcesadas.push({
+      ...cancionLocal,
+      escuchada_en: item.played_at,
     });
-  } catch (error) {
-    next(error);
+    idsVistos.add(item.track.id);
   }
+
+  for (const track of topTracks) {
+    if (!track || idsVistos.has(track.id)) continue;
+    const cancionLocal = await guardarObtenerCancionLocal(track);
+    cancionesProcesadas.push({
+      ...cancionLocal,
+      escuchada_en: null,
+    });
+    idsVistos.add(track.id);
+  }
+
+  return cancionesProcesadas;
 };
 
+// Registrar el historial importado en la biblioteca y reproducciones del usuario
 const registrarHistorialEnBiblioteca = async (usuarioId, cancionesImportadas) => {
   for (const item of cancionesImportadas) {
     const fechaEscucha = item.escuchada_en ? new Date(item.escuchada_en) : new Date();
 
-    // guardar o actualizar
     await query(
       `INSERT INTO biblioteca (usuario_id, cancion_id, estado, es_favorita, fecha_agregado, fecha_actualizacion)
        VALUES ($1, $2, 'escuchado', FALSE, $3, $3)
@@ -263,5 +268,5 @@ module.exports = {
   guardarObtenerCancionLocal,
   intercambiarCodigoUsuarioSpotify,
   importarHistorialUsuarioSpotify,
-  registrarHistorialEnBiblioteca
+  registrarHistorialEnBiblioteca,
 };
