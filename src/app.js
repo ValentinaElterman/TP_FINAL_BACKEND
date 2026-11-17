@@ -30,7 +30,7 @@ app.use('/api/perfil', require('./routes/perfilRoutes'));
 //app.use('/api/puntuaciones', require('./routes/puntuacionesRoutes'));
 //app.use('/api/resenas', require('./routes/reseñasRoutes'));
 //app.use('/api/colecciones', require('./routes/coleccionesRoutes'));
-//app.use('/api/estadisticas', require('./routes/estadisticasRoutes'));
+app.use('/api/estadisticas', require('./routes/estadisticasRoutes'));
 
 app.use(rutaNoEncontrada);
 app.use(manejadorErrores);
