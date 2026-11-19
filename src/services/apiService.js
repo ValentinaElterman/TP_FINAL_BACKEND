@@ -2,6 +2,17 @@ const axios = require('axios');
 const { query, pool } = require('../config/db');
 
 const LASTFM_BASE_URL = 'https://ws.audioscrobbler.com/2.0/';
+const TIMEOUT_MS = 10000;
+
+// Last.fm devuelve la descripción con links HTML ("<a href=...>Read more</a>")
+const limpiarDescripcion = (html) => {
+  if (!html) return null;
+  const texto = String(html)
+    .replace(/<a\b[^>]*>.*?<\/a>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+  return texto || null;
+};
 
 const getApiKey = () => {
   const apiKey = process.env.LASTFM_API_KEY || process.env.API_KEY;
@@ -39,6 +50,7 @@ const generarExternalId = (prefijo, mbid, ...partes) => {
 // Buscar canciones
 const buscarCancionesExterno = async (queryBusqueda, limit = 20) => {
   const response = await axios.get(LASTFM_BASE_URL, {
+    timeout: TIMEOUT_MS,
     params: {
       method: 'track.search',
       track: queryBusqueda,
@@ -48,7 +60,8 @@ const buscarCancionesExterno = async (queryBusqueda, limit = 20) => {
     },
   });
 
-  const tracks = response.data?.results?.trackmatches?.track || [];
+  const resultado = response.data?.results?.trackmatches?.track || [];
+  const tracks = Array.isArray(resultado) ? resultado : [resultado];
 
   return tracks.map((t) => ({
     external_id: generarExternalId('track', t.mbid, t.artist, t.name),
@@ -77,10 +90,12 @@ const obtenerCancionExterna = async ({ artista, titulo, mbid }) => {
     params.track = titulo;
   }
 
-  const response = await axios.get(LASTFM_BASE_URL, { params });
+  const response = await axios.get(LASTFM_BASE_URL, { params, timeout: TIMEOUT_MS });
 
   if (response.data?.error) {
-    throw new Error(response.data.message || 'Canción no encontrada');
+    const error = new Error(response.data.message || 'Canción no encontrada');
+    error.statusCode = 404;
+    throw error;
   }
 
   return response.data.track;
@@ -90,6 +105,11 @@ const obtenerCancionExterna = async ({ artista, titulo, mbid }) => {
 const guardarObtenerCancionLocal = async (trackInfo) => {
   const nombreCancion = trackInfo.name;
   const nombreArtista = trackInfo.artist?.name || trackInfo.artist;
+  if (!nombreCancion) {
+    const error = new Error('Canción inválida');
+    error.statusCode = 400;
+    throw error;
+  }
   const externalTrackId = generarExternalId('track', trackInfo.mbid, nombreArtista, nombreCancion);
 
   const cancionExistente = await query(
@@ -140,12 +160,25 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
     // Canción - Last.fm devuelve duration en milisegundos como string
     const duracionSegundos = Math.max(0, Math.round((Number(trackInfo.duration) || 0) / 1000));
 
+    const descripcion = limpiarDescripcion(trackInfo.wiki?.summary);
+
     const nuevaCancion = await client.query(
-      `INSERT INTO canciones (external_id, titulo, album_id, duracion, foto)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO canciones (external_id, titulo, album_id, duracion, foto, descripcion)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (external_id) DO NOTHING
        RETURNING *`,
-      [externalTrackId, nombreCancion, albumId, duracionSegundos, fotoCancion]
+      [externalTrackId, nombreCancion, albumId, duracionSegundos, fotoCancion, descripcion]
     );
+
+    // Otra request la guardó en simultáneo: devolvemos la existente
+    if (nuevaCancion.rows.length === 0) {
+      await client.query('ROLLBACK');
+      const existente = await query('SELECT * FROM canciones WHERE external_id = $1', [
+        externalTrackId,
+      ]);
+      return existente.rows[0];
+    }
+
     const cancionGuardada = nuevaCancion.rows[0];
 
     // Artista
@@ -182,7 +215,8 @@ const guardarObtenerCancionLocal = async (trackInfo) => {
     }
 
     // Géneros - Last.fm devuelve toptags.tag
-    const tags = trackInfo.toptags?.tag || [];
+    const tagsRaw = trackInfo.toptags?.tag || [];
+    const tags = Array.isArray(tagsRaw) ? tagsRaw : [tagsRaw];
     for (const tag of tags.slice(0, 5)) {
       if (!tag.name) continue;
       const nombreGenero = String(tag.name).trim().toLowerCase();
