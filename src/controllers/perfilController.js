@@ -1,7 +1,7 @@
 const { obtenerPerfil, actualizarPerfil, desactivarCuenta } = require('../services/perfilService');
 const { opcionesCookie } = require('./authController');
 
-const obtenerPerfilController = async (req, res, next) => {
+const obtenerPerfil = async (req, res, next) => {
   try {
     const perfil = await obtenerPerfil(req.usuario.id);
     return res.json({ ok: true, perfil });
@@ -10,11 +10,11 @@ const obtenerPerfilController = async (req, res, next) => {
       return res.status(error.statusCode).json({ ok: false, mensaje: error.message });
     }
 
-    next(error);
+    return next(error);
   }
 };
 
-const actualizarPerfilController = async (req, res, next) => {
+const actualizarPerfil = async (req, res, next) => {
   try {
     const perfilActualizado = await actualizarPerfil(req.usuario.id, req.body);
     return res.json({ ok: true, mensaje: 'Perfil actualizado', perfil: perfilActualizado });
@@ -27,11 +27,11 @@ const actualizarPerfilController = async (req, res, next) => {
       });
     }
 
-    next(error);
+    return next(error);
   }
 };
 
-const desactivarCuentaController = async (req, res, next) => {
+const desactivarCuenta = async (req, res, next) => {
   try {
     await desactivarCuenta(req.usuario.id);
     res.clearCookie('token', opcionesCookie());
@@ -41,12 +41,12 @@ const desactivarCuentaController = async (req, res, next) => {
       return res.status(error.statusCode).json({ ok: false, mensaje: error.message });
     }
 
-    next(error);
+    return next(error);
   }
 };
 
 module.exports = {
-  obtenerPerfil: obtenerPerfilController,
-  actualizarPerfil: actualizarPerfilController,
-  desactivarCuenta: desactivarCuentaController,
+  obtenerPerfil,
+  actualizarPerfil,
+  desactivarCuenta,
 };

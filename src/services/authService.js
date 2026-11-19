@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { query } = require('../config/db');
+const { query, pool } = require('../config/db');
 
 const DURACION_SEGUNDOS = 60 * 60 * 2;
 
@@ -25,10 +25,12 @@ const buscarUsuarioPorEmailOUsername = async (email, username) => {
 };
 
 const crearUsuario = async ({ username, email, password }) => {
-  await query('BEGIN');
+  const client = await pool.connect();
 
   try {
-    const resUsuario = await query(
+    await client.query('BEGIN');
+
+    const resUsuario = await client.query(
       `INSERT INTO usuarios (username, email, password, activo)
        VALUES ($1, $2, $3, TRUE)
        RETURNING id, username, email`,
@@ -37,17 +39,19 @@ const crearUsuario = async ({ username, email, password }) => {
 
     const usuarioCreado = resUsuario.rows[0];
 
-    await query(
+    await client.query(
       `INSERT INTO perfiles (usuario_id, nombre)
        VALUES ($1, $2)`,
       [usuarioCreado.id, usuarioCreado.username]
     );
 
-    await query('COMMIT');
+    await client.query('COMMIT');
     return usuarioCreado;
   } catch (error) {
-    await query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 };
 
@@ -78,14 +82,16 @@ const actualizarUsuarioDb = async ({ id, username, email, password }) => {
   let index = 1;
 
   if (username !== undefined) {
+    const usernameTrim = String(username).trim();
     updates.push(`username = $${index}`);
-    values.push(username);
+    values.push(usernameTrim);
     index += 1;
   }
 
   if (email !== undefined) {
+    const emailTrim = String(email).trim().toLowerCase();
     updates.push(`email = $${index}`);
-    values.push(email);
+    values.push(emailTrim);
     index += 1;
   }
 
@@ -99,11 +105,23 @@ const actualizarUsuarioDb = async ({ id, username, email, password }) => {
     return null;
   }
 
-  values.push(id);
-  const queryText = `UPDATE usuarios SET ${updates.join(', ')} WHERE id = $${index} RETURNING id, username, email`;
+  const client = await pool.connect();
 
-  const resultado = await query(queryText, values);
-  return resultado.rows[0] || null;
+  try {
+    await client.query('BEGIN');
+
+    values.push(id);
+    const queryText = `UPDATE usuarios SET ${updates.join(', ')} WHERE id = $${index} RETURNING id, username, email`;
+    const resultado = await client.query(queryText, values);
+
+    await client.query('COMMIT');
+    return resultado.rows[0] || null;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 const eliminarUsuario = async (usuarioId) => {
@@ -123,8 +141,8 @@ const registrarUsuario = async ({ username, email, password, confirmarPassword }
 
   const errores = [];
 
-  if (usernameTrim.length < 5 || usernameTrim.length > 10) {
-    errores.push('El usuario debe tener entre 5 y 10 caracteres');
+  if (usernameTrim.length < 5 || usernameTrim.length > 15) {
+    errores.push('El usuario debe tener entre 5 y 15 caracteres');
   }
 
   if (!emailValido(emailTrim)) {
@@ -223,8 +241,8 @@ const actualizarUsuario = async ({ usuarioId, username, email, password }) => {
 
   if (username !== undefined) {
     const usernameTrim = String(username).trim();
-    if (usernameTrim.length < 5 || usernameTrim.length > 10) {
-      errores.push('El usuario debe tener entre 5 y 10 caracteres');
+    if (usernameTrim.length < 5 || usernameTrim.length > 15) {
+      errores.push('El usuario debe tener entre 5 y 15 caracteres');
     }
   }
 

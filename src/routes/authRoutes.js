@@ -1,17 +1,17 @@
 const express = require('express');
-const { registrar, login, logout, me, obtenerUrlSpotify, importarSpotify,} = require('../controllers/authController');
+const { registrar, login, logout, me, actualizar, eliminar } = require('../controllers/authController');
 const { verificarToken } = require('../middlewares/authMiddlewares');
 
 const router = express.Router();
 
-//publicas
+// publicas
 router.post('/registro', registrar);
 router.post('/login', login);
 router.post('/logout', logout);
 
-//privada
+// privadas
 router.get('/me', verificarToken, me);
-router.get('/spotify/url', verificarToken, obtenerUrlSpotify);
-router.post('/spotify/importar', verificarToken, importarSpotify);
+router.put('/actualizar', verificarToken, actualizar);
+router.delete('/eliminar', verificarToken, eliminar);
 
 module.exports = router;
