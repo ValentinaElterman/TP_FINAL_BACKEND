@@ -6,7 +6,7 @@ const spotifyTokenState = {
   expirationTime: 0,
 };
 
-// obtener o renovar el Access Token de Spotify
+// Obtener o renovar el Access Token de Spotify (Client Credentials)
 const obtenerSpotifyToken = async () => {
   const ahora = Date.now();
   if (spotifyTokenState.accessToken && ahora < spotifyTokenState.expirationTime) {
@@ -39,7 +39,7 @@ const obtenerSpotifyToken = async () => {
   return spotifyTokenState.accessToken;
 };
 
-// consultas a la api
+// Consultas a la API pública
 const buscarCancionesExterno = async (queryBusqueda) => {
   const token = await obtenerSpotifyToken();
   const response = await axios.get('https://api.spotify.com/v1/search', {
@@ -176,65 +176,58 @@ const intercambiarCodigoUsuarioSpotify = async (code) => {
     }
   );
 
-  return response.data; // devuelve { access_token, refresh_token, expires_in }
+  return response.data;
 };
 
-// Obtener historial reciente (últimas 50) y top canciones del usuario
+// Descargar historial reciente y top tracks del usuario y guardarlos en el catálogo local
 const importarHistorialUsuarioSpotify = async (userAccessToken) => {
   const headers = { Authorization: `Bearer ${userAccessToken}` };
 
-  // 1. Traer últimas 50 reproducciones reales
-  const recientesRes = await axios.get(
-    'https://api.spotify.com/v1/me/player/recently-played',
-    { headers, params: { limit: 50 } }
-  );
+  const [recientesRes, topRes] = await Promise.all([
+    axios.get('https://api.spotify.com/v1/me/player/recently-played', {
+      headers,
+      params: { limit: 50 },
+    }),
+    axios.get('https://api.spotify.com/v1/me/top/tracks', {
+      headers,
+      params: { limit: 50, time_range: 'medium_term' },
+    }),
+  ]);
 
-  // 2. Traer top 50 canciones más escuchadas (mediano plazo ~6 meses)
-  const topRes = await axios.get(
-    'https://api.spotify.com/v1/me/top/tracks',
-    { headers, params: { limit: 50, time_range: 'medium_term' } }
-  );
+  const recientes = recientesRes.data.items || [];
+  const topTracks = topRes.data.items || [];
 
-  const itemsRecientes = recientesRes.data.items || [];
-  const itemsTop = topRes.data.items || [];
+  const cancionesProcesadas = [];
+  const idsVistos = new Set();
 
-  const cancionesGuardadas = [];
-  const idsProcesados = new Set();
-
-  // Guardar historial reciente en la bd
-  for (const item of itemsRecientes) {
-    const track = item.track;
-    if (track && !idsProcesados.has(track.id)) {
-      idsProcesados.add(track.id);
-      const local = await guardarObtenerCancionLocal(track);
-      cancionesGuardadas.push({
-        ...local,
-        origen: 'reciente',
-        escuchada_en: item.played_at,
-      });
-    }
+  for (const item of recientes) {
+    if (!item.track) continue;
+    const cancionLocal = await guardarObtenerCancionLocal(item.track);
+    cancionesProcesadas.push({
+      ...cancionLocal,
+      escuchada_en: item.played_at,
+    });
+    idsVistos.add(item.track.id);
   }
 
-  // Guardar top tracks en la bd
-  for (const track of itemsTop) {
-    if (track && !idsProcesados.has(track.id)) {
-      idsProcesados.add(track.id);
-      const local = await guardarObtenerCancionLocal(track);
-      cancionesGuardadas.push({
-        ...local,
-        origen: 'top',
-      });
-    }
+  for (const track of topTracks) {
+    if (!track || idsVistos.has(track.id)) continue;
+    const cancionLocal = await guardarObtenerCancionLocal(track);
+    cancionesProcesadas.push({
+      ...cancionLocal,
+      escuchada_en: null,
+    });
+    idsVistos.add(track.id);
   }
 
-  return cancionesGuardadas;
+  return cancionesProcesadas;
 };
 
+// Registrar el historial importado en la biblioteca y reproducciones del usuario
 const registrarHistorialEnBiblioteca = async (usuarioId, cancionesImportadas) => {
   for (const item of cancionesImportadas) {
     const fechaEscucha = item.escuchada_en ? new Date(item.escuchada_en) : new Date();
 
-    // guardar o actualizar
     await query(
       `INSERT INTO biblioteca (usuario_id, cancion_id, estado, es_favorita, fecha_agregado, fecha_actualizacion)
        VALUES ($1, $2, 'escuchado', FALSE, $3, $3)
@@ -275,5 +268,5 @@ module.exports = {
   guardarObtenerCancionLocal,
   intercambiarCodigoUsuarioSpotify,
   importarHistorialUsuarioSpotify,
-  registrarHistorialEnBiblioteca
+  registrarHistorialEnBiblioteca,
 };
