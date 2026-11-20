@@ -7,10 +7,14 @@ const rutaNoEncontrada = (req, res, next) => {
 
 const manejadorErrores = (err, req, res, next) => {
   console.error(err);
-  const status = err.status || 500;
+
+  // Los services lanzan errores con statusCode; body-parser/express usan status
+  const status = err.statusCode || err.status || 500;
+
   res.status(status).json({
     ok: false,
     mensaje: status === 500 ? 'Error interno del servidor' : err.message,
+    errores: status === 500 ? undefined : err.errores || undefined,
   });
 };
 

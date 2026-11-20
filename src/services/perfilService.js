@@ -27,12 +27,14 @@ const obtenerPerfilActual = async (usuarioId) => {
 };
 
 const actualizarPerfilUsuario = async ({ usuarioId, nombre, foto, bio, preferencias }) => {
+  const preferenciasLimpias = esObjetoPlano(preferencias) ? preferencias : {};
+
   const resultado = await query(
     `UPDATE perfiles
-     SET nombre = $1, foto = $2, bio = $3, preferencias = $4
+     SET nombre = $1, foto = $2, bio = $3, preferencias = $4::jsonb
      WHERE usuario_id = $5
      RETURNING usuario_id, nombre, foto, bio, preferencias`,
-    [nombre, foto, bio, JSON.stringify(preferencias), usuarioId]
+    [nombre, foto, bio, JSON.stringify(preferenciasLimpias), usuarioId]
   );
 
   return resultado.rows[0] || null;
@@ -73,8 +75,8 @@ const actualizarPerfil = async (usuarioId, cambios) => {
 
   if (cambios.nombre !== undefined) {
     nombre = String(cambios.nombre).trim();
-    if (nombre.length < 5 || nombre.length > 20) {
-      errores.push('El nombre debe tener entre 5 y 20 caracteres');
+    if (nombre.length < 5 || nombre.length > 15) {
+      errores.push('El nombre debe tener entre 5 y 15 caracteres');
     }
   }
 
