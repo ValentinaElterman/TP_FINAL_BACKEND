@@ -6,12 +6,18 @@ const {
   eliminarUsuarioCuenta,
 } = require('../services/authService');
 
+// Opciones de la cookie del token (se usan igual en login y logout, si no coinciden el navegador no la borra).
+// Con proxy en el front (mismo dominio para el navegador) alcanza con 'lax'.
+// Si el front llama directo al back en otro dominio, definir COOKIE_SAMESITE=none (exige https).
 const opcionesCookie = () => {
   const produccion = process.env.NODE_ENV === 'production';
+  const configurado = String(process.env.COOKIE_SAMESITE || 'lax').toLowerCase();
+  const sameSite = ['lax', 'strict', 'none'].includes(configurado) ? configurado : 'lax';
+
   return {
     httpOnly: true, // protegida desde el navegador
-    secure: produccion, // https
-    sameSite: produccion ? 'none' : 'lax', // 'none' si front y back están en dominios distintos
+    secure: produccion || sameSite === 'none', // https ('none' siempre lo exige)
+    sameSite,
   };
 };
 
@@ -47,8 +53,11 @@ const registrar = async (req, res, next) => {
 // POST /api/auth/login
 const login = async (req, res, next) => {
   try {
-    const respuesta = await loginUsuario(req.body, res);
-    return res.json(respuesta);
+    const { token, maxAgeMs, usuario } = await loginUsuario(req.body);
+
+    res.cookie('token', token, { ...opcionesCookie(), maxAge: maxAgeMs });
+
+    return res.json({ ok: true, mensaje: 'Sesión iniciada', usuario });
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({

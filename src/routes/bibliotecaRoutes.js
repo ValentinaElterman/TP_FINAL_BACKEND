@@ -11,6 +11,7 @@ const router = express.Router();
 
 // todo privado
 router.use(verificarToken);
+
 router.get('/', obtenerBiblioteca);
 router.post('/', actualizarBiblioteca);
 router.put('/', actualizarBiblioteca);
