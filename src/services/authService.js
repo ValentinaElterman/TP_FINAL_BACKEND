@@ -123,7 +123,6 @@ const actualizarUsuarioDb = async ({ id, username, email, password }) => {
     client.release();
   }
 };
-
 const eliminarUsuario = async (usuarioId) => {
   const resultado = await query(
     'DELETE FROM usuarios WHERE id = $1 RETURNING id',
