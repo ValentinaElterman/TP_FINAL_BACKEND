@@ -15,7 +15,7 @@ const crearError = (statusCode, mensaje, errores) => {
 
 const esIdValido = (valor) => Number.isInteger(Number(valor)) && Number(valor) > 0;
 
-// Si Last.fm falla (timeout, caída, etc.) devolvemos 502 en vez de un 500 genérico
+// Si Last.fm falla devolvemos 502 en vez de un 500 genérico
 const conErrorExterno = async (fn) => {
   try {
     return await fn();
@@ -28,9 +28,7 @@ const conErrorExterno = async (fn) => {
 
 const ORDENES_VALIDOS = ['relevancia', 'oyentes', 'titulo', 'artista'];
 
-// ---------------------------------------------------------------------
 // EXPLORAR: búsqueda por texto en Last.fm + filtros / orden
-// ---------------------------------------------------------------------
 const buscarMusica = async (usuarioId, { q, orden, dir, artista, minOyentes, limite } = {}) => {
   const texto = String(q || '').trim();
   if (texto.length < 2) {
@@ -71,25 +69,27 @@ const buscarMusica = async (usuarioId, { q, orden, dir, artista, minOyentes, lim
     });
   }
 
-  // Marcamos qué resultados ya están en la biblioteca de ESTE usuario
-  const ids = resultados.map((t) => t.external_id);
-  let enBiblioteca = new Map();
-  if (ids.length > 0) {
-    const bib = await query(
-      `SELECT c.external_id, c.id AS cancion_id, b.estado, b.es_favorita
-       FROM biblioteca b
-       JOIN canciones c ON c.id = b.cancion_id
-       WHERE b.usuario_id = $1 AND c.external_id = ANY($2::varchar[])`,
-      [usuarioId, ids]
-    );
-    enBiblioteca = new Map(bib.rows.map((r) => [r.external_id, r]));
-  }
+  // que resultados ya están en la biblioteca del usuario
+  const bib = await query(
+    `SELECT c.external_id, c.id AS cancion_id, b.estado, b.es_favorita
+     FROM biblioteca b
+     JOIN canciones c ON c.id = b.cancion_id
+     WHERE b.usuario_id = $1`,
+    [usuarioId]
+  );
+  const enBiblioteca = new Map(bib.rows.map((r) => [r.external_id, r]));
 
   return resultados.map((t) => {
     const registro = enBiblioteca.get(t.external_id);
     return {
-      ...t,
-      biblioteca: registro
+      external_id: t.external_id,
+      mbid: t.mbid,
+      titulo: t.titulo,
+      artista: t.artista,
+      foto: t.foto,
+      oyentes: t.oyentes,
+      url: t.url,
+      biblioteca: registro //si registro existe arma el objeto sino null
         ? {
             cancion_id: registro.cancion_id,
             estado: registro.estado,
@@ -100,10 +100,8 @@ const buscarMusica = async (usuarioId, { q, orden, dir, artista, minOyentes, lim
   });
 };
 
-// ---------------------------------------------------------------------
 // Resolver una canción: por id local, o trayéndola de Last.fm y guardándola
-// (la usan biblioteca, puntuaciones, reseñas y colecciones)
-// ---------------------------------------------------------------------
+// biblioteca, puntuaciones, reseñas y colecciones
 const resolverCancion = async ({ cancionId, artista, titulo, mbid } = {}) => {
   if (cancionId !== undefined && cancionId !== null && cancionId !== '') {
     if (!esIdValido(cancionId)) {
@@ -132,12 +130,11 @@ const resolverCancion = async ({ cancionId, artista, titulo, mbid } = {}) => {
   return conErrorExterno(() => guardarObtenerCancionLocal(trackInfo));
 };
 
-// POST /api/musica -> guarda la canción en el catálogo (sin tocar la biblioteca)
-const importarMusica = async (datos) => resolverCancion({ ...datos, cancionId: undefined });
+// POST /api/musica guarda la canción (sin tocar la biblioteca)
+const importarMusica = async (datos) =>
+  resolverCancion({ artista: datos.artista, titulo: datos.titulo, mbid: datos.mbid });
 
-// ---------------------------------------------------------------------
 // DETALLE: portada, título, descripción, categorías, metadatos + datos del usuario
-// ---------------------------------------------------------------------
 const obtenerDetalleMusica = async (usuarioId, cancionId) => {
   if (!esIdValido(cancionId)) {
     throw crearError(400, 'Id de canción inválido');
@@ -156,16 +153,16 @@ const obtenerDetalleMusica = async (usuarioId, cancionId) => {
          al.id AS album_id,
          al.titulo AS album_titulo,
          al.foto AS album_foto,
-         COALESCE((
+         (
            SELECT json_agg(json_build_object('id', a.id, 'nombre', a.nombre, 'foto', a.foto) ORDER BY a.nombre)
            FROM cancion_artistas ca JOIN artistas a ON a.id = ca.artista_id
            WHERE ca.cancion_id = c.id
-         ), '[]'::json) AS artistas,
-         COALESCE((
+         ) AS artistas,
+         (
            SELECT json_agg(json_build_object('id', g.id, 'nombre', g.nombre) ORDER BY g.nombre)
            FROM cancion_generos cg JOIN generos g ON g.id = cg.genero_id
            WHERE cg.cancion_id = c.id
-         ), '[]'::json) AS generos
+         ) AS generos
        FROM canciones c
        LEFT JOIN albumes al ON al.id = c.album_id
        WHERE c.id = $1`,
@@ -202,7 +199,18 @@ const obtenerDetalleMusica = async (usuarioId, cancionId) => {
   }
 
   return {
-    ...cancion,
+    id: cancion.id,
+    external_id: cancion.external_id,
+    titulo: cancion.titulo,
+    descripcion: cancion.descripcion,
+    duracion: cancion.duracion,
+    foto: cancion.foto,
+    fecha_lanzamiento: cancion.fecha_lanzamiento,
+    album_id: cancion.album_id,
+    album_titulo: cancion.album_titulo,
+    album_foto: cancion.album_foto,
+    artistas: cancion.artistas || [],
+    generos: cancion.generos || [],
     mi_biblioteca: bibliotecaRes.rows[0] || null,
     mi_puntuacion: puntuacionRes.rows[0] || null,
     mi_resena: resenaRes.rows[0] || null,
@@ -210,9 +218,7 @@ const obtenerDetalleMusica = async (usuarioId, cancionId) => {
   };
 };
 
-// ---------------------------------------------------------------------
-// REPRODUCCIONES (alimentan las estadísticas)
-// ---------------------------------------------------------------------
+// REPRODUCCIONES (estadísticas)
 const registrarReproduccion = async (usuarioId, cancionId, { segundos_escuchados, completada, fuente } = {}) => {
   if (!esIdValido(cancionId)) {
     throw crearError(400, 'Id de canción inválido');

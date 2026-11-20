@@ -16,7 +16,7 @@ const responderError = (error, res, next) => {
   return next(error);
 };
 
-// GET /api/puntuaciones?cancionId=
+// GET /api/puntuaciones
 const obtenerPuntuaciones = async (req, res, next) => {
   try {
     const puntuaciones = await obtenerPuntuacionesUsuario(req.usuario.id, req.query);

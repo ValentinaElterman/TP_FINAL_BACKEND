@@ -39,7 +39,7 @@ const obtenerColeccion = async (req, res, next) => {
   }
 };
 
-// POST /api/colecciones   body: { nombre, descripcion? }
+// POST /api/colecciones   body: { nombre, descripcion? } ? es que son opcionales
 const crearColeccion = async (req, res, next) => {
   try {
     const coleccion = await crearColeccionUsuario(req.usuario.id, req.body);

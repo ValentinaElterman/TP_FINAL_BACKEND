@@ -39,16 +39,16 @@ const SELECT_ITEM = `
     c.titulo,
     c.foto,
     c.duracion,
-    COALESCE((
+    (
       SELECT json_agg(json_build_object('id', a.id, 'nombre', a.nombre) ORDER BY a.nombre)
       FROM cancion_artistas ca JOIN artistas a ON a.id = ca.artista_id
       WHERE ca.cancion_id = c.id
-    ), '[]'::json) AS artistas,
-    COALESCE((
+    ) AS artistas,
+    (
       SELECT json_agg(g.nombre ORDER BY g.nombre)
       FROM cancion_generos cg JOIN generos g ON g.id = cg.genero_id
       WHERE cg.cancion_id = c.id
-    ), '[]'::json) AS generos,
+    ) AS generos,
     p.valor AS puntuacion,
     (r.id IS NOT NULL) AS tiene_resena`;
 
@@ -57,6 +57,23 @@ const FROM_ITEM = `
   JOIN canciones c ON c.id = b.cancion_id
   LEFT JOIN puntuaciones p ON p.cancion_id = b.cancion_id AND p.usuario_id = b.usuario_id
   LEFT JOIN "reseñas" r ON r.cancion_id = b.cancion_id AND r.usuario_id = b.usuario_id`;
+
+// json_agg devuelve NULL si no hay filas: lo normalizamos a lista vacía
+const armarItem = (fila) => ({
+  id: fila.id,
+  cancion_id: fila.cancion_id,
+  estado: fila.estado,
+  es_favorita: fila.es_favorita,
+  fecha_agregado: fila.fecha_agregado,
+  fecha_actualizacion: fila.fecha_actualizacion,
+  titulo: fila.titulo,
+  foto: fila.foto,
+  duracion: fila.duracion,
+  artistas: fila.artistas || [],
+  generos: fila.generos || [],
+  puntuacion: fila.puntuacion,
+  tiene_resena: fila.tiene_resena,
+});
 
 // ---------------------------------------------------------------------
 // LISTAR con filtros: estado, favorita, genero, q (título/artista), puntuacion
@@ -132,7 +149,7 @@ const obtenerBibliotecaUsuario = async (usuarioId, filtros = {}) => {
   );
 
   const total = resultado.rows[0]?.total || 0;
-  const items = resultado.rows.map(({ total: _total, ...item }) => item);
+  const items = resultado.rows.map(armarItem);
 
   return { total, pagina: paginaNum, limite: limiteNum, items };
 };
@@ -144,7 +161,7 @@ const obtenerItemBiblioteca = async (usuarioId, cancionId) => {
      WHERE b.usuario_id = $1 AND b.cancion_id = $2`,
     [usuarioId, cancionId]
   );
-  return resultado.rows[0] || null;
+  return resultado.rows[0] ? armarItem(resultado.rows[0]) : null;
 };
 
 // ---------------------------------------------------------------------

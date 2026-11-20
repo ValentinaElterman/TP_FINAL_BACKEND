@@ -2,7 +2,7 @@ const {
   buscarMusica,
   importarMusica,
   obtenerDetalleMusica,
-  registrarReproduccion: registrarReproduccionService,
+  registrarReproduccion: registrarReproduccionService, //falla si tienen mismo nombre
 } = require('../services/musicaService');
 
 const responderError = (error, res, next) => {
@@ -16,8 +16,7 @@ const responderError = (error, res, next) => {
   return next(error);
 };
 
-// GET /api/musica?q=&orden=relevancia|oyentes|titulo|artista&dir=asc|desc&artista=&minOyentes=&limite=
-// Explorar: busca en Last.fm
+// GET /api/musica Explorar: busca en Last.fm
 const obtenerMusica = async (req, res, next) => {
   try {
     const resultados = await buscarMusica(req.usuario.id, req.query);
@@ -28,7 +27,7 @@ const obtenerMusica = async (req, res, next) => {
 };
 
 // POST /api/musica   body: { artista, titulo } o { mbid }
-// Trae la canción de Last.fm y la guarda en el catálogo (devuelve el id local para ir al detalle)
+// Trae la canción de Last.fm y la guarda (devuelve el id local para ir al detalle)
 const crearMusica = async (req, res, next) => {
   try {
     const cancion = await importarMusica(req.body);

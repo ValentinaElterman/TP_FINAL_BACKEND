@@ -31,27 +31,31 @@ const SELECT_PUNTUACION = `
   FROM puntuaciones p
   JOIN canciones c ON c.id = p.cancion_id`;
 
-// GET: todas las puntuaciones del usuario (opcional ?cancionId= para una sola canción)
+// GET: todas las puntuaciones del usuario
 const obtenerPuntuacionesUsuario = async (usuarioId, { cancionId } = {}) => {
-  const valores = [usuarioId];
-  let filtro = '';
-
   if (cancionId !== undefined && cancionId !== '') {
     if (!esIdValido(cancionId)) {
       throw crearError(400, 'cancionId inválido');
     }
-    valores.push(Number(cancionId));
-    filtro = 'AND p.cancion_id = $2';
+
+    const deUnaCancion = await query(
+      `${SELECT_PUNTUACION}
+       WHERE p.usuario_id = $1 AND p.cancion_id = $2
+       ORDER BY p.fecha_actualizacion DESC, p.id DESC`,
+      [usuarioId, Number(cancionId)]
+    );
+
+    return deUnaCancion.rows;
   }
 
-  const resultado = await query(
+  const todas = await query(
     `${SELECT_PUNTUACION}
-     WHERE p.usuario_id = $1 ${filtro}
+     WHERE p.usuario_id = $1
      ORDER BY p.fecha_actualizacion DESC, p.id DESC`,
-    valores
+    [usuarioId]
   );
 
-  return resultado.rows;
+  return todas.rows;
 };
 
 // POST: puntuar una canción (una sola puntuación por usuario y canción)
