@@ -2,8 +2,8 @@ const express = require('express');
 const {
   obtenerMusica,
   crearMusica,
-  actualizarMusica,
-  eliminarMusica
+  obtenerDetalleMusica,
+  registrarReproduccion,
 } = require('../controllers/musicaController');
 const { verificarToken } = require('../middlewares/authMiddlewares');
 
@@ -14,7 +14,7 @@ router.use(verificarToken);
 
 router.get('/', obtenerMusica);
 router.post('/', crearMusica);
-router.put('/:id', actualizarMusica);
-router.delete('/:id', eliminarMusica);
+router.get('/:id', obtenerDetalleMusica);
+router.post('/:id/reproducciones', registrarReproduccion);
 
 module.exports = router;

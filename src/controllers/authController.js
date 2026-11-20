@@ -1,6 +1,3 @@
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { query } = require('../config/db');
 const {
   registrarUsuario,
   loginUsuario,
@@ -8,70 +5,20 @@ const {
   actualizarUsuario,
   eliminarUsuarioCuenta,
 } = require('../services/authService');
-const {
-  intercambiarCodigoUsuarioSpotify,
-  importarHistorialUsuarioSpotify,
-  registrarHistorialEnBiblioteca,
-} = require('../services/spotifyService');
 
-const DURACION_SEGUNDOS = 60 * 60 * 2; // 2 horas
-const DURACION_MS = DURACION_SEGUNDOS * 1000;
-
+// Opciones de la cookie del token (se usan igual en login y logout, si no coinciden el navegador no la borra).
+// Con proxy en el front (mismo dominio para el navegador) alcanza con 'lax'.
+// Si el front llama directo al back en otro dominio, definir COOKIE_SAMESITE=none (exige https).
 const opcionesCookie = () => {
   const produccion = process.env.NODE_ENV === 'production';
+  const configurado = String(process.env.COOKIE_SAMESITE || 'lax').toLowerCase();
+  const sameSite = ['lax', 'strict', 'none'].includes(configurado) ? configurado : 'lax';
+
   return {
     httpOnly: true, // protegida desde el navegador
-    secure: produccion, // https
-    sameSite: produccion ? 'none' : 'lax', // 'none' si front y back están en dominios distintos
+    secure: produccion || sameSite === 'none', // https ('none' siempre lo exige)
+    sameSite,
   };
-};
-
-// GET /api/auth/spotify/url -> Devuelve la URL de autorización a React
-const obtenerUrlSpotify = (req, res) => {
-  const scopes = [
-    'user-read-recently-played',
-    'user-top-read',
-    'user-read-private',
-  ].join(' ');
-
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: process.env.SPOTIFY_CLIENT_ID,
-    scope: scopes,
-    redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
-  });
-
-  return res.json({
-    ok: true,
-    url: `https://accounts.spotify.com/authorize?${params.toString()}`,
-  });
-};
-
-// POST /api/auth/spotify/importar -> Recibe el "code" desde Axios y guarda el historial
-const importarSpotify = async (req, res, next) => {
-  try {
-    const { code } = req.body;
-
-    if (!code) {
-      return res.status(400).json({ ok: false, mensaje: 'Falta el código de autorización de Spotify' });
-    }
-
-    const tokenData = await intercambiarCodigoUsuarioSpotify(code);
-    const cancionesImportadas = await importarHistorialUsuarioSpotify(tokenData.access_token);
-
-    if (cancionesImportadas.length > 0) {
-      await registrarHistorialEnBiblioteca(req.usuario.id, cancionesImportadas);
-    }
-
-    return res.json({
-      ok: true,
-      mensaje: `Se importaron ${cancionesImportadas.length} canciones desde Spotify`,
-      total: cancionesImportadas.length,
-      canciones: cancionesImportadas,
-    });
-  } catch (error) {
-    next(error);
-  }
 };
 
 // POST /api/auth/registro (creamos el perfil junto con el usuario)
@@ -99,15 +46,18 @@ const registrar = async (req, res, next) => {
       });
     }
 
-    next(error);
+    return next(error);
   }
 };
 
 // POST /api/auth/login
 const login = async (req, res, next) => {
   try {
-    const respuesta = await loginUsuario(req.body, res);
-    return res.json(respuesta);
+    const { token, maxAgeMs, usuario } = await loginUsuario(req.body);
+
+    res.cookie('token', token, { ...opcionesCookie(), maxAge: maxAgeMs });
+
+    return res.json({ ok: true, mensaje: 'Sesión iniciada', usuario });
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({
@@ -116,7 +66,7 @@ const login = async (req, res, next) => {
       });
     }
 
-    next(error);
+    return next(error);
   }
 };
 
@@ -143,11 +93,10 @@ const me = async (req, res, next) => {
       return res.status(error.statusCode).json({ ok: false, mensaje: error.message });
     }
 
-    next(error);
+    return next(error);
   }
 };
 
-// PUT /api/auth/actualizar
 const actualizar = async (req, res, next) => {
   try {
     const usuarioActualizado = await actualizarUsuario({
@@ -178,11 +127,10 @@ const actualizar = async (req, res, next) => {
       });
     }
 
-    next(error);
+    return next(error);
   }
 };
 
-// DELETE /api/auth/eliminar
 const eliminar = async (req, res, next) => {
   try {
     await eliminarUsuarioCuenta(req.usuario.id);
@@ -193,7 +141,7 @@ const eliminar = async (req, res, next) => {
       return res.status(error.statusCode).json({ ok: false, mensaje: error.message });
     }
 
-    next(error);
+    return next(error);
   }
 };
 
@@ -205,6 +153,4 @@ module.exports = {
   actualizar,
   eliminar,
   opcionesCookie,
-  obtenerUrlSpotify,
-  importarSpotify,
 };

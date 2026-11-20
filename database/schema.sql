@@ -77,6 +77,7 @@ CREATE TABLE canciones (
     album_id          INTEGER REFERENCES albumes(id) ON UPDATE CASCADE ON DELETE SET NULL,
     duracion          INTEGER NOT NULL DEFAULT 0 CHECK (duracion >= 0), -- en segundos (Last.fm a veces devuelve 0)
     foto              VARCHAR(500),
+    descripcion       TEXT,                                              -- wiki.summary de Last.fm (limpia de HTML)
     preview_url       VARCHAR(500),                                      -- opcional (Last.fm no provee audio)
     fecha_lanzamiento DATE
 );

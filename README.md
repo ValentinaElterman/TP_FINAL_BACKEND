@@ -203,7 +203,7 @@ Comandos para Correr el Proyecto:
 - BACKEND: npm i, node server.js // npm run dev
 - FRONTEND: npm i, npm run dev
 
-API Externa: https://developer.spotify.com/documentation/web-api
+API Externa: 'https://ws.audioscrobbler.com/2.0/'
 
 Endpoint del Backend:
 - Usuario:
