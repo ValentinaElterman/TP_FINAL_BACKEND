@@ -31,6 +31,7 @@ const obtenerBiblioteca = async (req, res, next) => {
 // body: { cancionId | artista + titulo | mbid, estado?, es_favorita? }
 const actualizarBiblioteca = async (req, res, next) => {
   try {
+    console.log('Usuario en request:', req.usuario, 'Body:', req.body);
     const { item, creado } = await guardarEnBiblioteca(req.usuario.id, req.body);
     return res.status(creado ? 201 : 200).json({
       ok: true,

@@ -104,18 +104,32 @@ const buscarMusica = async (usuarioId, { q, orden, dir, artista, minOyentes, lim
 // biblioteca, puntuaciones, reseñas y colecciones
 const resolverCancion = async ({ cancionId, artista, titulo, mbid } = {}) => {
   if (cancionId !== undefined && cancionId !== null && cancionId !== '') {
-    if (!esIdValido(cancionId)) {
+    // Si es número, busca por ID interno
+    if (esIdValido(cancionId)) {
+      const resultado = await query('SELECT * FROM canciones WHERE id = $1', [Number(cancionId)]);
+      if (!resultado.rows[0]) {
+        throw crearError(404, 'Canción no encontrada');
+      }
+      return resultado.rows[0];
+    }
+
+    // Si vino un string (ej: external_id o mbid), intentamos buscarlo por external_id antes de tirar error
+    const porExternal = await query('SELECT * FROM canciones WHERE external_id = $1', [
+      String(cancionId).trim(),
+    ]);
+    if (porExternal.rows[0]) {
+      return porExternal.rows[0];
+    }
+
+    // Si además vinieron artista y título, seguimos hacia abajo para traerla de Last.fm
+    if (!(artista && titulo)) {
       throw crearError(400, 'cancionId inválido');
     }
-
-    const resultado = await query('SELECT * FROM canciones WHERE id = $1', [Number(cancionId)]);
-    if (!resultado.rows[0]) {
-      throw crearError(404, 'Canción no encontrada');
-    }
-    return resultado.rows[0];
   }
 
-  const mbidTrim = String(mbid || '').trim();
+  const mbidRaw = String(mbid || '').trim();
+  // Ignoramos nuestros slugs internos "lastfm:..." para no mandárselos a la API de Last.fm
+  const mbidTrim = mbidRaw && !mbidRaw.startsWith('lastfm:') ? mbidRaw : '';
   const artistaTrim = String(artista || '').trim();
   const tituloTrim = String(titulo || '').trim();
 

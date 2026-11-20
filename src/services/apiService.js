@@ -219,111 +219,117 @@ const obtenerIdGenero = (nombre) =>
   });
 
 // Guardar o recuperar la canción (y su artista, álbum y géneros) en PostgreSQL
+// Guardar o recuperar la canción (y su artista, álbum y géneros) en PostgreSQL
 const guardarObtenerCancionLocal = async (trackInfo) => {
-  const nombreCancion = recortar(trackInfo?.name, 200);
-  const nombreArtista = recortar(trackInfo?.artist?.name || trackInfo?.artist, 150);
-
-  if (!nombreCancion) {
-    const error = new Error('Canción inválida');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Se revisa tanto el ID por mbid como el ID por slug (artista:título),
-  // porque la búsqueda puede no traer mbid y el detalle sí.
-  const externalTrackId = generarExternalId('track', trackInfo.mbid, nombreArtista, nombreCancion);
-  const externalTrackIdSlug = generarExternalId('track', null, nombreArtista, nombreCancion);
-
-  const existente = await buscarCancionPorExternalIds([externalTrackId, externalTrackIdSlug]);
-  if (existente) return existente;
-
-  // Álbum (opcional en Last.fm)
-  let albumId = null;
-  let fotoCancion = null;
-
-  if (trackInfo.album && trackInfo.album.title) {
-    const tituloAlbum = recortar(trackInfo.album.title, 200);
-    const artistaAlbum = trackInfo.album.artist || nombreArtista;
-    fotoCancion = extraerImagen(trackInfo.album.image);
-
-    albumId = await obtenerIdAlbum({
-      externalId: generarExternalId('album', trackInfo.album.mbid, artistaAlbum, tituloAlbum),
-      titulo: tituloAlbum,
-      foto: fotoCancion,
-    });
-  }
-
-  // Artista
-  let artistaId = null;
-  if (nombreArtista) {
-    artistaId = await obtenerIdArtista({
-      externalId: generarExternalId('artist', trackInfo.artist?.mbid, nombreArtista),
-      nombre: nombreArtista,
-    });
-  }
-
-  // Géneros - Last.fm devuelve toptags.tag (sin repetidos)
-  const tagsRaw = trackInfo.toptags?.tag || [];
-  const tags = Array.isArray(tagsRaw) ? tagsRaw : [tagsRaw];
-  const nombresGeneros = [
-    ...new Set(
-      tags
-        .slice(0, 5)
-        .map((tag) => recortar(tag?.name, 80).toLowerCase())
-        .filter(Boolean)
-    ),
-  ];
-
-  const generosIds = [];
-  for (const nombreGenero of nombresGeneros) {
-    generosIds.push(await obtenerIdGenero(nombreGenero));
-  }
-
-  // Canción - Last.fm devuelve duration en milisegundos como string
-  const duracionSegundos = Math.max(0, Math.round((Number(trackInfo.duration) || 0) / 1000));
-  const descripcion = limpiarDescripcion(trackInfo.wiki?.summary);
-
   try {
-    await query(
-      `INSERT INTO canciones (external_id, titulo, album_id, duracion, foto, descripcion)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [externalTrackId, nombreCancion, albumId, duracionSegundos, fotoCancion, descripcion]
-    );
-  } catch (error) {
-    // Otra request la guardó en simultáneo: devolvemos la existente
-    if (esViolacionUnica(error)) {
-      const guardadaPorOtra = await buscarCancionPorExternalIds([externalTrackId]);
-      if (guardadaPorOtra) return guardadaPorOtra;
-    }
-    throw error;
-  }
+    const nombreCancion = recortar(trackInfo?.name, 200);
+    const nombreArtista = recortar(trackInfo?.artist?.name || trackInfo?.artist, 150);
 
-  const cancionGuardada = await buscarCancionPorExternalIds([externalTrackId]);
-
-  try {
-    if (artistaId) {
-      await query('INSERT INTO cancion_artistas (cancion_id, artista_id) VALUES ($1, $2)', [
-        cancionGuardada.id,
-        artistaId,
-      ]);
+    if (!nombreCancion) {
+      const error = new Error('Canción inválida');
+      error.statusCode = 400;
+      throw error;
     }
 
-    for (const generoId of generosIds) {
-      await query('INSERT INTO cancion_generos (cancion_id, genero_id) VALUES ($1, $2)', [
-        cancionGuardada.id,
-        generoId,
-      ]);
+    // Se revisa tanto el ID por mbid como el ID por slug (artista:título),
+    // porque la búsqueda puede no traer mbid y el detalle sí.
+    const externalTrackId = generarExternalId('track', trackInfo.mbid, nombreArtista, nombreCancion);
+    const externalTrackIdSlug = generarExternalId('track', null, nombreArtista, nombreCancion);
+
+    const existente = await buscarCancionPorExternalIds([externalTrackId, externalTrackIdSlug]);
+    if (existente) return existente;
+
+    // Álbum (opcional en Last.fm)
+    let albumId = null;
+    let fotoCancion = null;
+
+    if (trackInfo.album && trackInfo.album.title) {
+      const tituloAlbum = recortar(trackInfo.album.title, 200);
+      const artistaAlbum = trackInfo.album.artist || nombreArtista;
+      fotoCancion = extraerImagen(trackInfo.album.image);
+
+      albumId = await obtenerIdAlbum({
+        externalId: generarExternalId('album', trackInfo.album.mbid, artistaAlbum, tituloAlbum),
+        titulo: tituloAlbum,
+        foto: fotoCancion,
+      });
     }
-  } catch (error) {
+
+    // Artista
+    let artistaId = null;
+    if (nombreArtista) {
+      artistaId = await obtenerIdArtista({
+        externalId: generarExternalId('artist', trackInfo.artist?.mbid, nombreArtista),
+        nombre: nombreArtista,
+      });
+    }
+
+    // Géneros - Last.fm devuelve toptags.tag (sin repetidos)
+    const tagsRaw = trackInfo.toptags?.tag || [];
+    const tags = Array.isArray(tagsRaw) ? tagsRaw : [tagsRaw];
+    const nombresGeneros = [
+      ...new Set(
+        tags
+          .slice(0, 5)
+          .map((tag) => recortar(tag?.name, 80).toLowerCase())
+          .filter(Boolean)
+      ),
+    ];
+
+    const generosIds = [];
+    for (const nombreGenero of nombresGeneros) {
+      generosIds.push(await obtenerIdGenero(nombreGenero));
+    }
+
+    // Canción - Last.fm devuelve duration en milisegundos como string
+    const duracionSegundos = Math.max(0, Math.round((Number(trackInfo.duration) || 0) / 1000));
+    const descripcion = limpiarDescripcion(trackInfo.wiki?.summary);
+
     try {
-      await query('DELETE FROM canciones WHERE id = $1', [cancionGuardada.id]);
-    } catch (errorLimpieza) {
-      console.error('No se pudo limpiar la canción incompleta:', errorLimpieza.message);
+      await query(
+        `INSERT INTO canciones (external_id, titulo, album_id, duracion, foto, descripcion)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [externalTrackId, nombreCancion, albumId, duracionSegundos, fotoCancion, descripcion]
+      );
+    } catch (error) {
+      // Otra request la guardó en simultáneo: devolvemos la existente
+      if (esViolacionUnica(error)) {
+        const guardadaPorOtra = await buscarCancionPorExternalIds([externalTrackId]);
+        if (guardadaPorOtra) return guardadaPorOtra;
+      }
+      throw error;
     }
-    throw error;
-  }
 
-  return cancionGuardada;
+    const cancionGuardada = await buscarCancionPorExternalIds([externalTrackId]);
+
+    try {
+      if (artistaId) {
+        await query('INSERT INTO cancion_artistas (cancion_id, artista_id) VALUES ($1, $2)', [
+          cancionGuardada.id,
+          artistaId,
+        ]);
+      }
+
+      for (const generoId of generosIds) {
+        await query('INSERT INTO cancion_generos (cancion_id, genero_id) VALUES ($1, $2)', [
+          cancionGuardada.id,
+          generoId,
+        ]);
+      }
+    } catch (error) {
+      try {
+        await query('DELETE FROM canciones WHERE id = $1', [cancionGuardada.id]);
+      } catch (errorLimpieza) {
+        console.error('No se pudo limpiar la canción incompleta:', errorLimpieza.message);
+      }
+      throw error;
+    }
+
+    return cancionGuardada;
+  } catch (err) {
+    console.error('STACK TRACE REAL EN guardarObtenerCancionLocal:', err);
+    throw err;
+  }
 };
 
 module.exports = {
