@@ -4,6 +4,8 @@ const { registrarActividad } = require('./actividadService');
 
 const ESTADOS_VALIDOS = ['quiero_escuchar', 'escuchando', 'escuchado'];
 
+const ORDENES_VALIDOS = ['fecha', 'actualizacion', 'titulo', 'puntuacion'];
+
 const crearError = (statusCode, mensaje, errores) => {
   const error = new Error(mensaje);
   error.statusCode = statusCode;
@@ -11,9 +13,10 @@ const crearError = (statusCode, mensaje, errores) => {
   return error;
 };
 
-const esIdValido = (valor) => Number.isInteger(Number(valor)) && Number(valor) > 0;
+// Verificando el id. Un id válido es un texto que empieza con un dígito del 1 al 9 y sigue solo con dígitos. 
+const esIdValido = (valor) => /^[1-9][0-9]*$/.test(String(valor));
 
-// Convierte "true"/"false"/true/false en booleano. Devuelve undefined si no vino.
+// Verifica los valores y si son true or false.
 const parsearBooleano = (valor, nombre) => {
   if (valor === undefined || valor === null || valor === '') return undefined;
   if (valor === true || valor === 'true' || valor === '1' || valor === 1) return true;
@@ -21,45 +24,31 @@ const parsearBooleano = (valor, nombre) => {
   throw crearError(400, `${nombre} debe ser true o false`);
 };
 
-const ORDENES = {
-  fecha: 'b.fecha_agregado',
-  actualizacion: 'b.fecha_actualizacion',
-  titulo: 'c.titulo',
-  puntuacion: 'p.valor',
-};
-
+// Datos de cada canción de la biblioteca, junto con la puntuación y la reseña del mismo usuario.
 const SELECT_ITEM = `
   SELECT
-    b.id,
-    b.cancion_id,
-    b.estado,
-    b.es_favorita,
-    b.fecha_agregado,
-    b.fecha_actualizacion,
-    c.titulo,
-    c.foto,
-    c.duracion,
-    (
-      SELECT json_agg(json_build_object('id', a.id, 'nombre', a.nombre) ORDER BY a.nombre)
-      FROM cancion_artistas ca JOIN artistas a ON a.id = ca.artista_id
-      WHERE ca.cancion_id = c.id
-    ) AS artistas,
-    (
-      SELECT json_agg(g.nombre ORDER BY g.nombre)
-      FROM cancion_generos cg JOIN generos g ON g.id = cg.genero_id
-      WHERE cg.cancion_id = c.id
-    ) AS generos,
-    p.valor AS puntuacion,
-    (r.id IS NOT NULL) AS tiene_resena`;
+    biblioteca.id,
+    biblioteca.cancion_id,
+    biblioteca.estado,
+    biblioteca.es_favorita,
+    biblioteca.fecha_agregado,
+    biblioteca.fecha_actualizacion,
+    canciones.titulo,
+    canciones.foto,
+    canciones.duracion,
+    puntuaciones.valor AS puntuacion,
+    "reseñas".id AS resena_id
+  FROM biblioteca
+  JOIN canciones ON canciones.id = biblioteca.cancion_id
+  LEFT JOIN puntuaciones
+    ON puntuaciones.cancion_id = biblioteca.cancion_id
+    AND puntuaciones.usuario_id = biblioteca.usuario_id
+  LEFT JOIN "reseñas"
+    ON "reseñas".cancion_id = biblioteca.cancion_id
+    AND "reseñas".usuario_id = biblioteca.usuario_id`;
 
-const FROM_ITEM = `
-  FROM biblioteca b
-  JOIN canciones c ON c.id = b.cancion_id
-  LEFT JOIN puntuaciones p ON p.cancion_id = b.cancion_id AND p.usuario_id = b.usuario_id
-  LEFT JOIN "reseñas" r ON r.cancion_id = b.cancion_id AND r.usuario_id = b.usuario_id`;
-
-// json_agg devuelve NULL si no hay filas: lo normalizamos a lista vacía
-const armarItem = (fila) => ({
+// Arma el objeto 
+const armarItem = (fila, artistas, generos) => ({
   id: fila.id,
   cancion_id: fila.cancion_id,
   estado: fila.estado,
@@ -69,136 +58,249 @@ const armarItem = (fila) => ({
   titulo: fila.titulo,
   foto: fila.foto,
   duracion: fila.duracion,
-  artistas: fila.artistas || [],
-  generos: fila.generos || [],
   puntuacion: fila.puntuacion,
-  tiene_resena: fila.tiene_resena,
+  tiene_resena: fila.resena_id !== null,
+  artistas,
+  generos,
 });
 
-// ---------------------------------------------------------------------
-// LISTAR con filtros: estado, favorita, genero, q (título/artista), puntuacion
-// ---------------------------------------------------------------------
+// Un solo item de la biblioteca del usuario (o null si esa canción no está en su biblioteca)
+const obtenerItemBiblioteca = async (usuarioId, cancionId) => {
+  const itemRes = await query(
+    `${SELECT_ITEM}
+     WHERE biblioteca.usuario_id = $1 AND biblioteca.cancion_id = $2`,
+    [usuarioId, cancionId]
+  );
+
+  if (itemRes.rows.length === 0) {
+    return null;
+  }
+
+  const artistasRes = await query(
+    `SELECT artistas.id, artistas.nombre
+     FROM cancion_artistas
+     JOIN artistas ON artistas.id = cancion_artistas.artista_id
+     WHERE cancion_artistas.cancion_id = $1
+     ORDER BY artistas.nombre`,
+    [cancionId]
+  );
+
+  const generosRes = await query(
+    `SELECT generos.nombre
+     FROM cancion_generos
+     JOIN generos ON generos.id = cancion_generos.genero_id
+     WHERE cancion_generos.cancion_id = $1
+     ORDER BY generos.nombre`,
+    [cancionId]
+  );
+
+  const generos = [];
+  for (const fila of generosRes.rows) {
+    generos.push(fila.nombre);
+  }
+
+  return armarItem(itemRes.rows[0], artistasRes.rows, generos);
+};
+
+// LISTAR con filtros: estado, favorita, genero, q (título o artista), puntuacion y orden (fecha, actualizacion, titulo, puntuacion) + dir (asc o desc)
 const obtenerBibliotecaUsuario = async (usuarioId, filtros = {}) => {
-  const { estado, favorita, genero, q, puntuacion, orden, dir, limite, pagina } = filtros;
+  const { estado, favorita, genero, q, puntuacion, orden, dir } = filtros;
 
-  const condiciones = ['b.usuario_id = $1'];
-  const valores = [usuarioId];
-
-  if (estado !== undefined && estado !== '') {
-    if (!ESTADOS_VALIDOS.includes(estado)) {
-      throw crearError(400, `Estado inválido. Opciones: ${ESTADOS_VALIDOS.join(', ')}`);
-    }
-    valores.push(estado);
-    condiciones.push(`b.estado = $${valores.length}`);
+  // Validamos los filtros antes de consultar la bd
+  if (estado !== undefined && estado !== '' && !ESTADOS_VALIDOS.includes(estado)) {
+    throw crearError(400, `Estado inválido. Opciones: ${ESTADOS_VALIDOS.join(', ')}`);
   }
 
   const soloFavoritas = parsearBooleano(favorita, 'favorita');
-  if (soloFavoritas !== undefined) {
-    valores.push(soloFavoritas);
-    condiciones.push(`b.es_favorita = $${valores.length}`);
-  }
 
-  if (genero) {
-    valores.push(String(genero).trim().toLowerCase());
-    condiciones.push(
-      `EXISTS (
-         SELECT 1 FROM cancion_generos cg JOIN generos g ON g.id = cg.genero_id
-         WHERE cg.cancion_id = b.cancion_id AND g.nombre = $${valores.length}
-       )`
-    );
-  }
-
-  if (puntuacion !== undefined && puntuacion !== '') {
-    const valor = Number(puntuacion);
-    if (!Number.isInteger(valor) || valor < 1 || valor > 5) {
-      throw crearError(400, 'La puntuación a filtrar debe ser un entero entre 1 y 5');
-    }
-    valores.push(valor);
-    condiciones.push(`p.valor = $${valores.length}`);
-  }
-
-  if (q && String(q).trim()) {
-    const patron = `%${String(q).trim().replace(/[%_\\]/g, '\\$&')}%`;
-    valores.push(patron);
-    condiciones.push(
-      `(c.titulo ILIKE $${valores.length} OR EXISTS (
-         SELECT 1 FROM cancion_artistas ca JOIN artistas a ON a.id = ca.artista_id
-         WHERE ca.cancion_id = c.id AND a.nombre ILIKE $${valores.length}
-       ))`
-    );
+  if (
+    puntuacion !== undefined &&
+    puntuacion !== '' &&
+    !['1', '2', '3', '4', '5'].includes(String(puntuacion))
+  ) {
+    throw crearError(400, 'La puntuación a filtrar debe ser un entero entre 1 y 5');
   }
 
   const ordenElegido = orden || 'fecha';
-  if (!ORDENES[ordenElegido]) {
-    throw crearError(400, `Orden inválido. Opciones: ${Object.keys(ORDENES).join(', ')}`);
+  if (!ORDENES_VALIDOS.includes(ordenElegido)) {
+    throw crearError(400, `Orden inválido. Opciones: ${ORDENES_VALIDOS.join(', ')}`);
   }
-  const direccion = String(dir || '').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
-  const limiteNum = Math.min(Math.max(parseInt(limite, 10) || 50, 1), 100);
-  const paginaNum = Math.max(parseInt(pagina, 10) || 1, 1);
-  valores.push(limiteNum, (paginaNum - 1) * limiteNum);
+  // traemos toda la biblioteca de este usuario
+  const itemsRes = await query(`${SELECT_ITEM} WHERE biblioteca.usuario_id = $1`, [usuarioId]);
 
-  const resultado = await query(
-    `${SELECT_ITEM},
-       COUNT(*) OVER()::int AS total
-     ${FROM_ITEM}
-     WHERE ${condiciones.join(' AND ')}
-     ORDER BY ${ORDENES[ordenElegido]} ${direccion} NULLS LAST, b.id DESC
-     LIMIT $${valores.length - 1} OFFSET $${valores.length}`,
-    valores
+  // traemos los artistas de todas esas canciones y los agrupamos por canción
+  const artistasRes = await query(
+    `SELECT cancion_artistas.cancion_id, artistas.id, artistas.nombre
+     FROM biblioteca
+     JOIN cancion_artistas ON cancion_artistas.cancion_id = biblioteca.cancion_id
+     JOIN artistas ON artistas.id = cancion_artistas.artista_id
+     WHERE biblioteca.usuario_id = $1
+     ORDER BY artistas.nombre`,
+    [usuarioId]
   );
 
-  const total = resultado.rows[0]?.total || 0;
-  const items = resultado.rows.map(armarItem);
+  const artistasPorCancion = new Map();
+  for (const fila of artistasRes.rows) {
+    if (!artistasPorCancion.has(fila.cancion_id)) {
+      artistasPorCancion.set(fila.cancion_id, []);
+    }
+    artistasPorCancion.get(fila.cancion_id).push({ id: fila.id, nombre: fila.nombre });
+  }
 
-  return { total, pagina: paginaNum, limite: limiteNum, items };
-};
-
-const obtenerItemBiblioteca = async (usuarioId, cancionId) => {
-  const resultado = await query(
-    `${SELECT_ITEM}
-     ${FROM_ITEM}
-     WHERE b.usuario_id = $1 AND b.cancion_id = $2`,
-    [usuarioId, cancionId]
+  const generosRes = await query(
+    `SELECT cancion_generos.cancion_id, generos.nombre
+     FROM biblioteca
+     JOIN cancion_generos ON cancion_generos.cancion_id = biblioteca.cancion_id
+     JOIN generos ON generos.id = cancion_generos.genero_id
+     WHERE biblioteca.usuario_id = $1
+     ORDER BY generos.nombre`,
+    [usuarioId]
   );
-  return resultado.rows[0] ? armarItem(resultado.rows[0]) : null;
+
+  const generosPorCancion = new Map();
+  for (const fila of generosRes.rows) {
+    if (!generosPorCancion.has(fila.cancion_id)) {
+      generosPorCancion.set(fila.cancion_id, []);
+    }
+    generosPorCancion.get(fila.cancion_id).push(fila.nombre);
+  }
+
+  const generoBuscado = genero ? String(genero).trim().toLowerCase() : '';
+  const textoBuscado = q ? String(q).trim().toLowerCase() : '';
+
+  // armamos la lista y nos quedamos solo con los que cumplen todos los filtros
+  const items = [];
+
+  for (const fila of itemsRes.rows) {
+    const artistas = artistasPorCancion.get(fila.cancion_id) || [];
+    const generos = generosPorCancion.get(fila.cancion_id) || [];
+    const item = armarItem(fila, artistas, generos);
+
+    if (estado && item.estado !== estado) continue;
+
+    if (soloFavoritas !== undefined && item.es_favorita !== soloFavoritas) continue;
+
+    // String() a los dos lados para comparar texto con texto ("4" con 4)
+    if (puntuacion && String(item.puntuacion) !== String(puntuacion)) continue;
+
+    if (generoBuscado && !item.generos.includes(generoBuscado)) continue;
+
+    if (textoBuscado) {
+      // Coincide si el texto está en el título o en el nombre de algún artista
+      let coincide = item.titulo.toLowerCase().includes(textoBuscado);
+      for (const artista of item.artistas) {
+        if (artista.nombre.toLowerCase().includes(textoBuscado)) {
+          coincide = true;
+        }
+      }
+      if (!coincide) continue;
+    }
+
+    items.push(item);
+  }
+
+  // 7) Ordenamos. Por defecto de más nuevo a más viejo; con dir=asc al revés.
+  items.sort((a, b) => {
+    let resultado = 0;
+
+    if (ordenElegido === 'titulo') {
+      resultado = a.titulo.localeCompare(b.titulo, 'es');
+    } else if (ordenElegido === 'puntuacion') {
+      // Las que no tienen puntuación cuentan como 0
+      resultado = (a.puntuacion || 0) - (b.puntuacion || 0);
+    } else if (ordenElegido === 'actualizacion') {
+      resultado = a.fecha_actualizacion - b.fecha_actualizacion; // fechas: da la diferencia en ms
+    } else {
+      resultado = a.fecha_agregado - b.fecha_agregado;
+    }
+
+    // Si empatan, desempata por id para que el orden sea siempre el mismo
+    if (resultado === 0) {
+      resultado = a.id - b.id;
+    }
+
+    return String(dir).toLowerCase() === 'asc' ? resultado : -resultado;
+  });
+
+  return { total: items.length, items };
 };
 
 // ---------------------------------------------------------------------
-// AGREGAR / ACTUALIZAR (upsert). Sirve para POST y PUT.
+// AGREGAR / ACTUALIZAR. Sirve para POST y PUT.
 // body: { cancionId | (artista + titulo) | mbid, estado?, es_favorita? }
+//
+// - Si la canción NO estaba en la biblioteca: la agrega (estado "quiero_escuchar"
+//   y no favorita, salvo que el body diga otra cosa).
+// - Si YA estaba: actualiza solo lo que vino en el body y deja lo demás como estaba.
 // ---------------------------------------------------------------------
 const guardarEnBiblioteca = async (usuarioId, datos = {}) => {
   const { estado } = datos;
-  const esFavorita = parsearBooleano(datos.es_favorita ?? datos.esFavorita, 'es_favorita');
+
+  // Aceptamos es_favorita (o esFavorita). Queda undefined si no vino.
+  let valorFavorita = datos.es_favorita;
+  if (valorFavorita === undefined) {
+    valorFavorita = datos.esFavorita;
+  }
+  const esFavorita = parsearBooleano(valorFavorita, 'es_favorita');
 
   if (estado !== undefined && !ESTADOS_VALIDOS.includes(estado)) {
     throw crearError(400, `Estado inválido. Opciones: ${ESTADOS_VALIDOS.join(', ')}`);
   }
 
+  // Busca la canción en nuestra base o la trae de Last.fm y la guarda
   const cancion = await resolverCancion(datos);
 
+  // ¿Ya la tenía este usuario en su biblioteca?
   const previo = await query(
     'SELECT estado, es_favorita FROM biblioteca WHERE usuario_id = $1 AND cancion_id = $2',
     [usuarioId, cancion.id]
   );
   const existia = previo.rows.length > 0;
 
-  await query(
-    `INSERT INTO biblioteca (usuario_id, cancion_id, estado, es_favorita)
-     VALUES ($1, $2, COALESCE($3::varchar, 'quiero_escuchar'), COALESCE($4::boolean, FALSE))
-     ON CONFLICT (usuario_id, cancion_id) DO UPDATE SET
-       estado = COALESCE($3::varchar, biblioteca.estado),
-       es_favorita = COALESCE($4::boolean, biblioteca.es_favorita),
-       fecha_actualizacion = NOW()`,
-    [usuarioId, cancion.id, estado ?? null, esFavorita ?? null]
-  );
+  let estadoFinal;
+  let favoritaFinal;
+
+  if (existia) {
+    // Partimos de lo que ya tenía y pisamos solo lo que vino
+    estadoFinal = previo.rows[0].estado;
+    favoritaFinal = previo.rows[0].es_favorita;
+    if (estado !== undefined) estadoFinal = estado;
+    if (esFavorita !== undefined) favoritaFinal = esFavorita;
+
+    await query(
+      `UPDATE biblioteca
+       SET estado = $1, es_favorita = $2, fecha_actualizacion = NOW()
+       WHERE usuario_id = $3 AND cancion_id = $4`,
+      [estadoFinal, favoritaFinal, usuarioId, cancion.id]
+    );
+  } else {
+    // Valores por defecto de una canción nueva
+    estadoFinal = 'quiero_escuchar';
+    favoritaFinal = false;
+    if (estado !== undefined) estadoFinal = estado;
+    if (esFavorita !== undefined) favoritaFinal = esFavorita;
+
+    try {
+      await query(
+        `INSERT INTO biblioteca (usuario_id, cancion_id, estado, es_favorita)
+         VALUES ($1, $2, $3, $4)`,
+        [usuarioId, cancion.id, estadoFinal, favoritaFinal]
+      );
+    } catch (error) {
+      // 23505 = violación de UNIQUE: dos pedidos iguales llegaron al mismo tiempo
+      if (error.code === '23505') {
+        throw crearError(409, 'La canción ya está en tu biblioteca');
+      }
+      throw error;
+    }
+  }
 
   await registrarActividad({
     usuarioId,
     tipo: existia ? 'biblioteca_actualizada' : 'biblioteca_agregada',
     cancionId: cancion.id,
-    detalles: { estado: estado ?? previo.rows[0]?.estado ?? 'quiero_escuchar', es_favorita: esFavorita },
+    detalles: { estado: estadoFinal, es_favorita: favoritaFinal },
   });
 
   const item = await obtenerItemBiblioteca(usuarioId, cancion.id);
@@ -206,7 +308,8 @@ const guardarEnBiblioteca = async (usuarioId, datos = {}) => {
 };
 
 // ---------------------------------------------------------------------
-// FAVORITA (toggle, o valor explícito si viene en el body)
+// FAVORITA: alterna entre favorita y no favorita.
+// Si el body trae es_favorita (true/false) se usa ese valor en vez de alternar.
 // ---------------------------------------------------------------------
 const alternarFavorita = async (usuarioId, cancionId, valorExplicito) => {
   if (!esIdValido(cancionId)) {
@@ -216,48 +319,82 @@ const alternarFavorita = async (usuarioId, cancionId, valorExplicito) => {
   const explicito = parsearBooleano(valorExplicito, 'es_favorita');
   const cancion = await resolverCancion({ cancionId });
 
-  // Si todavía no estaba en la biblioteca, se agrega ya como favorita
-  await query(
-    `INSERT INTO biblioteca (usuario_id, cancion_id, es_favorita)
-     VALUES ($1, $2, COALESCE($3::boolean, TRUE))
-     ON CONFLICT (usuario_id, cancion_id) DO UPDATE SET
-       es_favorita = COALESCE($3::boolean, NOT biblioteca.es_favorita),
-       fecha_actualizacion = NOW()`,
-    [usuarioId, cancion.id, explicito ?? null]
+  const previo = await query(
+    'SELECT es_favorita FROM biblioteca WHERE usuario_id = $1 AND cancion_id = $2',
+    [usuarioId, cancion.id]
   );
+  const existia = previo.rows.length > 0;
 
-  const item = await obtenerItemBiblioteca(usuarioId, cancion.id);
+  // Decidimos el nuevo valor:
+  // - si vino explícito, ese
+  // - si ya estaba en la biblioteca, lo contrario de lo que tenía
+  // - si no estaba, entra como favorita
+  let nuevoValor = true;
+  if (explicito !== undefined) {
+    nuevoValor = explicito;
+  } else if (existia) {
+    nuevoValor = !previo.rows[0].es_favorita;
+  }
+
+  if (existia) {
+    await query(
+      `UPDATE biblioteca
+       SET es_favorita = $1, fecha_actualizacion = NOW()
+       WHERE usuario_id = $2 AND cancion_id = $3`,
+      [nuevoValor, usuarioId, cancion.id]
+    );
+  } else {
+    try {
+      await query(
+        `INSERT INTO biblioteca (usuario_id, cancion_id, es_favorita)
+         VALUES ($1, $2, $3)`,
+        [usuarioId, cancion.id, nuevoValor]
+      );
+    } catch (error) {
+      if (error.code === '23505') {
+        throw crearError(409, 'La canción ya está en tu biblioteca');
+      }
+      throw error;
+    }
+  }
 
   await registrarActividad({
     usuarioId,
-    tipo: item.es_favorita ? 'favorita_agregada' : 'favorita_quitada',
+    tipo: nuevoValor ? 'favorita_agregada' : 'favorita_quitada',
     cancionId: cancion.id,
   });
 
-  return item;
+  return obtenerItemBiblioteca(usuarioId, cancion.id);
 };
 
 // ---------------------------------------------------------------------
-// QUITAR de la biblioteca (no borra la canción del catálogo compartido)
+// QUITAR de la biblioteca (no borra la canción del catálogo compartido,
+// solo la relación entre este usuario y la canción)
 // ---------------------------------------------------------------------
 const quitarDeBiblioteca = async (usuarioId, cancionId) => {
   if (!esIdValido(cancionId)) {
     throw crearError(400, 'Id de canción inválido');
   }
 
-  const resultado = await query(
-    'DELETE FROM biblioteca WHERE usuario_id = $1 AND cancion_id = $2 RETURNING cancion_id',
-    [usuarioId, Number(cancionId)]
+  // Primero comprobamos que esa canción esté en la biblioteca de este usuario
+  const existe = await query(
+    'SELECT id FROM biblioteca WHERE usuario_id = $1 AND cancion_id = $2',
+    [usuarioId, cancionId]
   );
 
-  if (resultado.rows.length === 0) {
+  if (existe.rows.length === 0) {
     throw crearError(404, 'La canción no está en tu biblioteca');
   }
+
+  await query('DELETE FROM biblioteca WHERE usuario_id = $1 AND cancion_id = $2', [
+    usuarioId,
+    cancionId,
+  ]);
 
   await registrarActividad({
     usuarioId,
     tipo: 'biblioteca_quitada',
-    cancionId: Number(cancionId),
+    cancionId,
   });
 
   return true;

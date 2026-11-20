@@ -16,7 +16,7 @@ const responderError = (error, res, next) => {
   return next(error);
 };
 
-// GET /api/biblioteca?estado=&favorita=&genero=&q=&puntuacion=&orden=&dir=&limite=&pagina=
+// GET /api/biblioteca?estado=&favorita=&genero=&q=&puntuacion=&orden=&dir=
 // (los favoritos son GET /api/biblioteca?favorita=true)
 const obtenerBiblioteca = async (req, res, next) => {
   try {
