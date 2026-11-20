@@ -39,8 +39,16 @@ TP_FINAL_BACKEND
       7. puntuacionesRoutes.js
       8. reseñasRoutes.js
     |_services:
-      1. apiService.js
-      2. estadisticasCalcular.js
+      1. actividadService.js
+      2. apiService.js
+      3. authService.js
+      4. bibliotecaService.js
+      5. coleccionesService.js
+      6. estadisticasCalcular.js
+      7. musicaService.js
+      8. perfilService.js
+      9. puntuacionService.js
+      10. resenasService.js
   1. app.js
 |_.env
 |_.gitignore
@@ -176,7 +184,20 @@ DAI-EFSI-FRONTEND/
 
 Instalación Local: npm i
 
-Variables Necesarias: PORT, DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET, JWT_EXPIRES_IN, FRONTEND_URL, LASTFM_API_KEY, LASTFM_SHARED_SECRET
+Variables Necesarias (.env)
+PORT
+DB_HOST
+DB_PORT
+DB_USER
+DB_PASSWORD
+DB_NAME
+JWT_SECRET
+JWT_EXPIRES_IN
+FRONTEND_URL
+LASTFM_API_KEY
+LASTFM_SHARED_SECRET
+NODE_ENV
+COOKIE_SAMESITE
 
 Comandos para Correr el Proyecto:
 - BACKEND: npm i, node server.js // npm run dev
@@ -189,19 +210,62 @@ Endpoint del Backend:
 1. POST /api/auth/registro (creamos el perfil junto con el usuario)
 2. POST /api/auth/login
 3. POST /api/auth/logout
-4. PUT /api/auth/actualizar
-5. DELETE /api/auth/eliminar
-6. GET /api/auth/me
+4. GET /api/auth/me
+5. PUT /api/auth/actualizar
+6. DELETE /api/auth/eliminar
 
 - Perfil:
-1. POST /api/auth/registro (creamos el perfil junto con el usuario)
-2. GET /api/perfil
-3. PUT /api/perfil
-4. DELETE /api/perfil
+1. GET /api/perfil
+2. PUT /api/perfil
+3. DELETE /api/perfil (desactivar cuenta)
+4. GET /api/perfil/actividad
 
-- habran mas proximamente!
+- Música:
+1. GET /api/musica (explorar en Last.fm)
+2. POST /api/musica (importar/guardar canción)
+3. GET /api/musica/:id (detalle de canción)
+4. POST /api/musica/:id/reproducciones
 
-Modelo de Datos: ?
+- Biblioteca:
+1. GET /api/biblioteca
+2. POST /api/biblioteca
+3. PUT /api/biblioteca
+4. PATCH /api/biblioteca/:cancionId/favorita
+5. DELETE /api/biblioteca/:cancionId
+
+- Colecciones (Playlists):
+1. GET /api/colecciones
+2. POST /api/colecciones
+3. GET /api/colecciones/:id
+4. PUT /api/colecciones/:id
+5. DELETE /api/colecciones/:id
+6. POST /api/colecciones/:id/canciones
+7. DELETE /api/colecciones/:id/canciones/:cancionId
+
+- Puntuaciones:
+1. GET /api/puntuaciones
+2. POST /api/puntuaciones
+3. PUT /api/puntuaciones/:id
+4. DELETE /api/puntuaciones/:id
+
+- Reseñas:
+1. GET /api/resenas
+2. POST /api/resenas
+3. PUT /api/resenas/:id
+4. DELETE /api/resenas/:id
+
+- Estadísticas:
+1. GET /api/estadisticas
+
+
+Modelo de Datos:
+La base de datos relacional (PostgreSQL) está estructurada en las siguientes entidades principales:
+Usuarios & Perfiles: usuarios, perfiles (relación 1 a 1).
+Catálogo Musical: canciones, artistas, albumes, generos (IDs vinculados a Last.fm).
+Biblioteca Personal: biblioteca (estado de escucha y favoritos).
+Organización & Opiniones: colecciones, colecciones_canciones, puntuaciones, reseñas.
+Historial: reproducciones y actividad.
+
 
 Estrategia de Autenticación: utilizamos JWT, cookies HTTP-only y encriptamiento de la contraseña con hash con bycrypt.
 
