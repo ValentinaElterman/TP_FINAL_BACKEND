@@ -44,25 +44,29 @@ const SELECT_RESENA = `
 
 // GET: reseñas del usuario (opcional ?cancionId=)
 const obtenerResenasUsuario = async (usuarioId, { cancionId } = {}) => {
-  const valores = [usuarioId];
-  let filtro = '';
-
   if (cancionId !== undefined && cancionId !== '') {
     if (!esIdValido(cancionId)) {
       throw crearError(400, 'cancionId inválido');
     }
-    valores.push(Number(cancionId));
-    filtro = 'AND r.cancion_id = $2';
+
+    const deUnaCancion = await query(
+      `${SELECT_RESENA}
+       WHERE r.usuario_id = $1 AND r.cancion_id = $2
+       ORDER BY r.fecha_actualizacion DESC, r.id DESC`,
+      [usuarioId, Number(cancionId)]
+    );
+
+    return deUnaCancion.rows;
   }
 
-  const resultado = await query(
+  const todas = await query(
     `${SELECT_RESENA}
-     WHERE r.usuario_id = $1 ${filtro}
+     WHERE r.usuario_id = $1
      ORDER BY r.fecha_actualizacion DESC, r.id DESC`,
-    valores
+    [usuarioId]
   );
 
-  return resultado.rows;
+  return todas.rows;
 };
 
 // POST: una reseña por usuario y canción

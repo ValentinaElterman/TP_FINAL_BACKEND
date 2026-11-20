@@ -1,190 +1,105 @@
 const { query } = require('../config/db');
 
+const NOMBRES_DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const NOMBRES_FRANJAS = ['Mañana', 'Tarde', 'Noche', 'Madrugada'];
+const UN_DIA_MS = 24 * 60 * 60 * 1000;
+
+// Mayor a menor por reproducciones; si empatan, por segundos escuchados
+const compararRanking = (a, b) => {
+  if (b.reproducciones !== a.reproducciones) {
+    return b.reproducciones - a.reproducciones;
+  }
+  return b.segundos_escuchados - a.segundos_escuchados;
+};
+
+const obtenerFranja = (hora) => {
+  if (hora >= 6 && hora <= 11) return 'Mañana';
+  if (hora >= 12 && hora <= 18) return 'Tarde';
+  if (hora >= 19 && hora <= 23) return 'Noche';
+  return 'Madrugada';
+};
+
 const calcularEstadisticasUsuario = async (usuarioId) => {
-  const [
-    resumenReproduccionesRes,
-    bibliotecaEstadosRes,
-    topArtistasRes,
-    topCancionesRes,
-    topGenerosRes,
-    actividadSemanalRes,
-    franjaHorariaRes,
-    decadasRes,
-    interaccionSocialRes,
-    rachaDiasRes,
-  ] = await Promise.all([
-    // tiempo total escuchado, total de reproducciones y canciones distintas
-    query(
-      `SELECT
-         COALESCE(SUM(segundos_escuchados), 0)::int AS segundos_totales,
-         COUNT(*)::int AS total_reproducciones,
-         COUNT(DISTINCT cancion_id)::int AS canciones_unicas,
-         COUNT(*) FILTER (WHERE completada = TRUE)::int AS reproducciones_completadas
-       FROM reproducciones
-       WHERE usuario_id = $1`,
-      [usuarioId]
-    ),
+  // Reproducciones del usuario
+  const reproduccionesRes = await query(
+    `SELECT cancion_id, segundos_escuchados, completada, fecha_inicio
+     FROM reproducciones
+     WHERE usuario_id = $1`,
+    [usuarioId]
+  );
+  const reproducciones = reproduccionesRes.rows;
 
-    // biblioteca personal y favoritas
-    query(
-      `SELECT
-         COUNT(*)::int AS total_canciones,
-         COUNT(*) FILTER (WHERE es_favorita = TRUE)::int AS favoritas,
-         COUNT(*) FILTER (WHERE estado = 'quiero_escuchar')::int AS quiero_escuchar,
-         COUNT(*) FILTER (WHERE estado = 'escuchando')::int AS escuchando,
-         COUNT(*) FILTER (WHERE estado = 'escuchado')::int AS escuchado
-       FROM biblioteca
-       WHERE usuario_id = $1`,
-      [usuarioId]
-    ),
+  //empieza todo vacio o = 0
+  let segundosTotales = 0;
+  let reproduccionesCompletadas = 0;
+  const cancionesVistas = new Set();
 
-    // top 5 Artistas más escuchados
-    query(
-      `SELECT
-         a.id,
-         a.nombre,
-         a.foto,
-         COUNT(r.id)::int AS reproducciones,
-         COALESCE(SUM(r.segundos_escuchados), 0)::int AS segundos_escuchados
-       FROM reproducciones r
-       JOIN cancion_artistas ca ON r.cancion_id = ca.cancion_id
-       JOIN artistas a ON ca.artista_id = a.id
-       WHERE r.usuario_id = $1
-       GROUP BY a.id, a.nombre, a.foto
-       ORDER BY reproducciones DESC, segundos_escuchados DESC
-       LIMIT 5`,
-      [usuarioId]
-    ),
+  const repPorDia = [0, 0, 0, 0, 0, 0, 0];
+  const segundosPorDia = [0, 0, 0, 0, 0, 0, 0];
+  const repPorFranja = { Mañana: 0, Tarde: 0, Noche: 0, Madrugada: 0 };
+  const diasConEscucha = new Set();
 
-    // top 5 Canciones más reproducidas
-    query(
-      `SELECT
-         c.id,
-         c.titulo,
-         c.foto,
-         COUNT(r.id)::int AS reproducciones,
-         COALESCE(SUM(r.segundos_escuchados), 0)::int AS segundos_escuchados
-       FROM reproducciones r
-       JOIN canciones c ON r.cancion_id = c.id
-       WHERE r.usuario_id = $1
-       GROUP BY c.id, c.titulo, c.foto
-       ORDER BY reproducciones DESC, segundos_escuchados DESC
-       LIMIT 5`,
-      [usuarioId]
-    ),
+  for (const rep of reproducciones) {
+    const fecha = new Date(rep.fecha_inicio);
 
-    // top 5 Géneros más escuchados
-    query(
-      `SELECT
-         g.id,
-         g.nombre,
-         COUNT(r.id)::int AS reproducciones
-       FROM reproducciones r
-       JOIN cancion_generos cg ON r.cancion_id = cg.cancion_id
-       JOIN generos g ON cg.genero_id = g.id
-       WHERE r.usuario_id = $1
-       GROUP BY g.id, g.nombre
-       ORDER BY reproducciones DESC
-       LIMIT 5`,
-      [usuarioId]
-    ),
+    segundosTotales += rep.segundos_escuchados;
+    cancionesVistas.add(rep.cancion_id);
+    if (rep.completada) {
+      reproduccionesCompletadas += 1;
+    }
 
-    // actividad por día de la semana (0 = domingo)
-    query(
-      `SELECT
-         EXTRACT(DOW FROM fecha_inicio)::int AS dia_numero,
-         COUNT(*)::int AS reproducciones,
-         COALESCE(SUM(segundos_escuchados), 0)::int AS segundos
-       FROM reproducciones
-       WHERE usuario_id = $1 AND fecha_inicio IS NOT NULL
-       GROUP BY dia_numero
-       ORDER BY dia_numero`,
-      [usuarioId]
-    ),
+    // getDay(): 0 = domingo
+    repPorDia[fecha.getDay()] += 1;
+    segundosPorDia[fecha.getDay()] += rep.segundos_escuchados;
 
-    // distribuido por franja horaria
-    query(
-      `SELECT
-         CASE
-           WHEN EXTRACT(HOUR FROM fecha_inicio) BETWEEN 6 AND 11 THEN 'Mañana'
-           WHEN EXTRACT(HOUR FROM fecha_inicio) BETWEEN 12 AND 18 THEN 'Tarde'
-           WHEN EXTRACT(HOUR FROM fecha_inicio) BETWEEN 19 AND 23 THEN 'Noche'
-           ELSE 'Madrugada'
-         END AS franja,
-         COUNT(*)::int AS reproducciones
-       FROM reproducciones
-       WHERE usuario_id = $1 AND fecha_inicio IS NOT NULL
-       GROUP BY franja
-       ORDER BY reproducciones DESC`,
-      [usuarioId]
-    ),
+    repPorFranja[obtenerFranja(fecha.getHours())] += 1;
 
-    // canciones escuchadas por década
-    query(
-      `SELECT
-         (FLOOR(EXTRACT(YEAR FROM c.fecha_lanzamiento) / 10) * 10)::int || 's' AS decada,
-         COUNT(*)::int AS reproducciones
-       FROM reproducciones r
-       JOIN canciones c ON r.cancion_id = c.id
-       WHERE r.usuario_id = $1 AND c.fecha_lanzamiento IS NOT NULL
-       GROUP BY decada
-       ORDER BY decada ASC`,
-      [usuarioId]
-    ),
+    diasConEscucha.add(new Date(fecha).setHours(0, 0, 0, 0));
+  }
 
-    // puntuaciones, reseñas y colecciones del usuario
-    query(
-      `SELECT
-         (SELECT COUNT(*)::int FROM puntuaciones WHERE usuario_id = $1) AS total_puntuaciones,
-         (SELECT COALESCE(ROUND(AVG(valor), 2), 0)::float FROM puntuaciones WHERE usuario_id = $1) AS promedio_puntuacion,
-         (SELECT COUNT(*)::int FROM "reseñas" WHERE usuario_id = $1) AS total_resenas,
-         (SELECT COUNT(*)::int FROM colecciones WHERE usuario_id = $1) AS total_colecciones`,
-      [usuarioId]
-    ),
+  const totalReproducciones = reproducciones.length;
+  const cancionesUnicas = cancionesVistas.size;
+  const minutosTotales = Math.round(segundosTotales / 60);
 
-    // fechas distintas de escucha para calcular la racha de días consecutivos
-    query(
-      `SELECT DISTINCT DATE(fecha_inicio) AS dia
-       FROM reproducciones
-       WHERE usuario_id = $1 AND fecha_inicio IS NOT NULL
-       ORDER BY dia DESC`,
-      [usuarioId]
-    ),
-  ]);
+  // tasa de exploración (% de temas únicos sobre total de reproducciones)
+  let tasaExploracion = 0;
+  if (totalReproducciones > 0) {
+    tasaExploracion = Math.round((cancionesUnicas / totalReproducciones) * 100);
+  }
 
-  const rep = resumenReproduccionesRes.rows[0];
-  const bib = bibliotecaEstadosRes.rows[0];
-  const social = interaccionSocialRes.rows[0];
+  const actividadPorDia = [];
+  for (let i = 0; i < NOMBRES_DIAS.length; i++) {
+    actividadPorDia.push({
+      dia_numero: i,
+      dia: NOMBRES_DIAS[i],
+      reproducciones: repPorDia[i],
+      minutos: Math.round(segundosPorDia[i] / 60),
+    });
+  }
 
-  // calculo de tasa de exploración (% de temas únicos sobre total de reproducciones)
-  const tasaExploracion =
-    rep.total_reproducciones > 0
-      ? Math.round((rep.canciones_unicas / rep.total_reproducciones) * 100)
-      : 0;
+  // solo las franjas con reproducciones, de mayor a menor
+  const distribucionHoraria = [];
+  for (const franja of NOMBRES_FRANJAS) {
+    if (repPorFranja[franja] > 0) {
+      distribucionHoraria.push({ franja, reproducciones: repPorFranja[franja] });
+    }
+  }
+  distribucionHoraria.sort((a, b) => b.reproducciones - a.reproducciones);
 
-  const nombresDias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-  const mapaDias = new Map(actividadSemanalRes.rows.map((row) => [row.dia_numero, row]));
-  const actividadPorDia = nombresDias.map((nombre, index) => ({
-    dia_numero: index,
-    dia: nombre,
-    reproducciones: mapaDias.get(index)?.reproducciones || 0,
-    minutos: Math.round((mapaDias.get(index)?.segundos || 0) / 60),
-  }));
-
-  // calculo de racha actual y racha máxima de días consecutivos escuchando música
+  // Racha actual y máxima de días consecutivos escuchando música
+  const dias = Array.from(diasConEscucha).sort((a, b) => b - a); // del más nuevo al más viejo
   let rachaActual = 0;
   let rachaMaxima = 0;
-  if (rachaDiasRes.rows.length > 0) {
-    const dias = rachaDiasRes.rows.map((r) => new Date(r.dia).setHours(0, 0, 0, 0));
+
+  if (dias.length > 0) {
     const hoy = new Date().setHours(0, 0, 0, 0);
-    const unDiaMs = 24 * 60 * 60 * 1000;
 
     // racha actual (cuenta si escuchó hoy o ayer)
-    if (dias[0] === hoy || dias[0] === hoy - unDiaMs) {
+    if (dias[0] === hoy || dias[0] === hoy - UN_DIA_MS) {
       rachaActual = 1;
       for (let i = 1; i < dias.length; i++) {
-        if (dias[i - 1] - dias[i] === unDiaMs) {
-          rachaActual++;
+        if (dias[i - 1] - dias[i] === UN_DIA_MS) {
+          rachaActual += 1;
         } else {
           break;
         }
@@ -195,8 +110,8 @@ const calcularEstadisticasUsuario = async (usuarioId) => {
     let rachaTemp = 1;
     rachaMaxima = 1;
     for (let i = 1; i < dias.length; i++) {
-      if (dias[i - 1] - dias[i] === unDiaMs) {
-        rachaTemp++;
+      if (dias[i - 1] - dias[i] === UN_DIA_MS) {
+        rachaTemp += 1;
         if (rachaTemp > rachaMaxima) rachaMaxima = rachaTemp;
       } else {
         rachaTemp = 1;
@@ -204,15 +119,138 @@ const calcularEstadisticasUsuario = async (usuarioId) => {
     }
   }
 
-  // Wrapped 100% con los datos reales
-  const artistaTop = topArtistasRes.rows[0]?.nombre || null;
-  const cancionTop = topCancionesRes.rows[0]?.titulo || null;
-  const franjaTop = franjaHorariaRes.rows[0]?.franja || null;
-  const minutosTotales = Math.round(rep.segundos_totales / 60);
+  // Bibliotec
+  const bibliotecaRes = await query(
+    'SELECT estado, es_favorita FROM biblioteca WHERE usuario_id = $1',
+    [usuarioId]
+  );
 
-  let resumenPersonalizado = 'Todavía no registraste reproducciones. ¡Importá tu historial o escuchá canciones para ver tu resumen!';
-  if (rep.total_reproducciones > 0) {
-    resumenPersonalizado = `Acumulaste ${minutosTotales} minutos en ${rep.total_reproducciones} reproducciones.`;
+  const biblioteca = {
+    total_canciones: bibliotecaRes.rows.length,
+    favoritas: 0,
+    quiero_escuchar: 0,
+    escuchando: 0,
+    escuchado: 0,
+  };
+  for (const item of bibliotecaRes.rows) {
+    if (item.es_favorita) biblioteca.favoritas += 1;
+    if (item.estado === 'quiero_escuchar') biblioteca.quiero_escuchar += 1;
+    if (item.estado === 'escuchando') biblioteca.escuchando += 1;
+    if (item.estado === 'escuchado') biblioteca.escuchado += 1;
+  }
+
+  // Top 5 artistas
+  const artistasRes = await query(
+    `SELECT artistas.id, artistas.nombre, artistas.foto, reproducciones.segundos_escuchados
+     FROM reproducciones
+     JOIN cancion_artistas ON cancion_artistas.cancion_id = reproducciones.cancion_id
+     JOIN artistas ON artistas.id = cancion_artistas.artista_id
+     WHERE reproducciones.usuario_id = $1`,
+    [usuarioId]
+  );
+
+  const mapaArtistas = new Map();
+  for (const fila of artistasRes.rows) {
+    let artista = mapaArtistas.get(fila.id);
+    if (!artista) {
+      artista = {
+        id: fila.id,
+        nombre: fila.nombre,
+        foto: fila.foto,
+        reproducciones: 0,
+        segundos_escuchados: 0,
+      };
+      mapaArtistas.set(fila.id, artista);
+    }
+    artista.reproducciones += 1;
+    artista.segundos_escuchados += fila.segundos_escuchados;
+  }
+  const topArtistas = Array.from(mapaArtistas.values()).sort(compararRanking).slice(0, 5);
+
+  // Top 5 canciones
+  const cancionesRes = await query(
+    `SELECT canciones.id, canciones.titulo, canciones.foto, reproducciones.segundos_escuchados
+     FROM reproducciones
+     JOIN canciones ON canciones.id = reproducciones.cancion_id
+     WHERE reproducciones.usuario_id = $1`,
+    [usuarioId]
+  );
+
+  const mapaCanciones = new Map();
+  for (const fila of cancionesRes.rows) {
+    let cancion = mapaCanciones.get(fila.id);
+    if (!cancion) {
+      cancion = {
+        id: fila.id,
+        titulo: fila.titulo,
+        foto: fila.foto,
+        reproducciones: 0,
+        segundos_escuchados: 0,
+      };
+      mapaCanciones.set(fila.id, cancion);
+    }
+    cancion.reproducciones += 1;
+    cancion.segundos_escuchados += fila.segundos_escuchados;
+  }
+  const topCanciones = Array.from(mapaCanciones.values()).sort(compararRanking).slice(0, 5);
+
+  // Top 5 géneros
+  const generosRes = await query(
+    `SELECT generos.id, generos.nombre
+     FROM reproducciones
+     JOIN cancion_generos ON cancion_generos.cancion_id = reproducciones.cancion_id
+     JOIN generos ON generos.id = cancion_generos.genero_id
+     WHERE reproducciones.usuario_id = $1`,
+    [usuarioId]
+  );
+
+  const mapaGeneros = new Map();
+  for (const fila of generosRes.rows) {
+    let genero = mapaGeneros.get(fila.id);
+    if (!genero) {
+      genero = { id: fila.id, nombre: fila.nombre, reproducciones: 0 };
+      mapaGeneros.set(fila.id, genero);
+    }
+    genero.reproducciones += 1;
+  }
+  const topGeneros = Array.from(mapaGeneros.values())
+    .sort((a, b) => b.reproducciones - a.reproducciones)
+    .slice(0, 5);
+
+  // Puntuaciones, reseñas y colecciones
+  const puntuacionesRes = await query('SELECT valor FROM puntuaciones WHERE usuario_id = $1', [
+    usuarioId,
+  ]);
+  const resenasRes = await query('SELECT id FROM "reseñas" WHERE usuario_id = $1', [usuarioId]);
+  const coleccionesRes = await query('SELECT id FROM colecciones WHERE usuario_id = $1', [
+    usuarioId,
+  ]);
+
+  let sumaPuntuaciones = 0;
+  for (const fila of puntuacionesRes.rows) {
+    sumaPuntuaciones += fila.valor;
+  }
+  let promedioPuntuacion = 0;
+  if (puntuacionesRes.rows.length > 0) {
+    promedioPuntuacion = Number((sumaPuntuaciones / puntuacionesRes.rows.length).toFixed(2));
+  }
+
+  const interaccion = {
+    total_puntuaciones: puntuacionesRes.rows.length,
+    promedio_puntuacion: promedioPuntuacion,
+    total_resenas: resenasRes.rows.length,
+    total_colecciones: coleccionesRes.rows.length,
+  };
+
+  // Wrapped
+  const artistaTop = topArtistas.length > 0 ? topArtistas[0].nombre : null;
+  const cancionTop = topCanciones.length > 0 ? topCanciones[0].titulo : null;
+  const franjaTop = distribucionHoraria.length > 0 ? distribucionHoraria[0].franja : null;
+
+  let resumenPersonalizado =
+    'Todavía no registraste reproducciones. ¡Importá tu historial o escuchá canciones para ver tu resumen!';
+  if (totalReproducciones > 0) {
+    resumenPersonalizado = `Acumulaste ${minutosTotales} minutos en ${totalReproducciones} reproducciones.`;
     if (artistaTop) resumenPersonalizado += ` Tu artista más escuchado es ${artistaTop}.`;
     if (cancionTop) resumenPersonalizado += ` Tu canción favorita del momento es "${cancionTop}".`;
     if (franjaTop) resumenPersonalizado += ` Tu momento favorito para escuchar música es la ${franjaTop.toLowerCase()}.`;
@@ -221,24 +259,23 @@ const calcularEstadisticasUsuario = async (usuarioId) => {
   return {
     resumenPersonalizado,
     indicadoresGenerales: {
-      segundosTotales: rep.segundos_totales,
+      segundosTotales,
       minutosTotales,
-      horasTotales: Number((rep.segundos_totales / 3600).toFixed(1)),
-      totalReproducciones: rep.total_reproducciones,
-      cancionesUnicas: rep.canciones_unicas,
-      reproduccionesCompletadas: rep.reproducciones_completadas,
+      horasTotales: Number((segundosTotales / 3600).toFixed(1)), //deja un solo decimal
+      totalReproducciones,
+      cancionesUnicas,
+      reproduccionesCompletadas,
       tasaExploracion,
       rachaActualDias: rachaActual,
       rachaMaximaDias: rachaMaxima,
     },
-    biblioteca: bib,
-    interaccion: social,
-    topArtistas: topArtistasRes.rows,
-    topCanciones: topCancionesRes.rows,
-    topGeneros: topGenerosRes.rows,
+    biblioteca,
+    interaccion,
+    topArtistas,
+    topCanciones,
+    topGeneros,
     actividadPorDia,
-    distribucionHoraria: franjaHorariaRes.rows,
-    porDecada: decadasRes.rows,
+    distribucionHoraria,
   };
 };
 

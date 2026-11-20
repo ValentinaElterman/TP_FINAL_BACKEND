@@ -16,7 +16,7 @@ const responderError = (error, res, next) => {
   return next(error);
 };
 
-// GET /api/resenas?cancionId=
+// GET /api/resenas
 const obtenerResenas = async (req, res, next) => {
   try {
     const resenas = await obtenerResenasUsuario(req.usuario.id, req.query);
