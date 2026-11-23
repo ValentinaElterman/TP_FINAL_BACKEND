@@ -33,16 +33,21 @@ const validarTexto = (texto) => {
 const SELECT_RESENA = `
   SELECT
     r.id,
+    r.usuario_id,
     r.cancion_id,
     r.texto,
     r.fecha_creacion,
     r.fecha_actualizacion,
     c.titulo,
-    c.foto
+    c.foto,
+    u.username,
+    COALESCE(p.nombre, u.username) AS nombre
   FROM "reseñas" r
-  JOIN canciones c ON c.id = r.cancion_id`;
+  JOIN canciones c ON c.id = r.cancion_id
+  JOIN usuarios u ON u.id = r.usuario_id
+  LEFT JOIN perfiles p ON p.usuario_id = u.id`;
 
-// GET: reseñas del usuario (opcional ?cancionId=)
+// GET: reseñas de una canción (?cancionId=) o todas las reseñas del usuario logueado
 const obtenerResenasUsuario = async (usuarioId, { cancionId } = {}) => {
   if (cancionId !== undefined && cancionId !== '') {
     if (!esIdValido(cancionId)) {
@@ -51,9 +56,9 @@ const obtenerResenasUsuario = async (usuarioId, { cancionId } = {}) => {
 
     const deUnaCancion = await query(
       `${SELECT_RESENA}
-       WHERE r.usuario_id = $1 AND r.cancion_id = $2
+       WHERE r.cancion_id = $1
        ORDER BY r.fecha_actualizacion DESC, r.id DESC`,
-      [usuarioId, Number(cancionId)]
+      [Number(cancionId)]
     );
 
     return deUnaCancion.rows;
